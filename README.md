@@ -3,7 +3,7 @@
 A containerised, scheduled workload that runs IBM's **Quantum Safe Explorer (QSE)** cryptographic scanner against **multiple Git repositories** and uploads findings to **Guardium Cryptography Manager (GCM)**. Designed to run on both upstream Kubernetes (1.24+) and Red Hat OpenShift 4.x.
 
 ---
-
+[QSE POD Github Reository](https://github.com/ncee-dp-tech-sme/qse_pod)
 ## Table of Contents
 
 1. [Architecture Overview](#architecture-overview)
@@ -20,6 +20,10 @@ A containerised, scheduled workload that runs IBM's **Quantum Safe Explorer (QSE
 12. [Security Design](#security-design)
 
 ---
+
+## TODO
+- Validate and complete IBM Guardium Crypography upload flow with correct URL
+- Add a section to the flow which updates the generated findings and discovery files with the required metadata
 
 ## Architecture Overview
 
@@ -444,3 +448,10 @@ To adjust the upload call, edit the `upload_to_gcm()` function in [`scripts/scan
 - **QSE token is build-time only**: the `QSE_TOKEN` used to clone the QSE CLI is a Docker `ARG` in the builder stage and is absent from the final runtime image layer.
 - **Minimal RBAC**: the `ServiceAccount` is granted `get` and `patch` on its own `ConfigMap` only — no other permissions.
 - **Image secrets**: use `imagePullSecrets` in `k8s/cronjob.yaml` if pulling from a private registry.
+
+## Disclaimer
+- Created by Erwin Friethoff, Security Architect at IBM using IBM Bob, our SDLC buddy. 
+- This is 100% free and open source and not in any way endorsed or supported by IBM. All done on personal title. 
+- If you have any questions, please reach out to me on Slack or LinkedIn. I’m happy to help.
+- 100% free and open source. No warranty. 
+- GitHub Issues: Report bugs or request features
