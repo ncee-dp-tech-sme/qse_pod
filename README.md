@@ -205,6 +205,7 @@ All repositories share the same `GIT_TOKEN` / `GIT_USERNAME` from the `qse-pod-s
 | `kubectl` | Deploy to Kubernetes | 1.24+ |
 | `oc` | Deploy to OpenShift | 4.x |
 | Access to IBM GitHub | Pull QSE CLI during image build | — |
+| **QSE CLI private repository** | Source of the Quantum Safe Explorer command-line scanner (`cli.sh`). A `QSE_TOKEN` (GitHub personal access token with `read:repo` scope) and `QSE_REPO_URL` are required at image build time to clone the scanner into the container image. Contact your IBM representative to obtain access. | — |
 | GCM instance | Receive scan results | — |
 
 ---
