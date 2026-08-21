@@ -1,0 +1,57 @@
+PROMPT: I would like to make a change, can you make it so that the cronjob reads from a configmap or other method so a user can easily add additional github repos to scan because there will be a need to scan multiple repositories in an organization
+
+DATE: 2026-08-21 04:17:44
+
+== TASK OUTCOME ==
+
+APPROACH
+--------
+Introduced a dedicated qse-pod-repos ConfigMap (repos-configmap.yaml) whose
+single data key repos.yaml holds a YAML list of repositories. The CronJob
+mounts it as a read-only file inside the container. scan.sh parses the file
+with pure bash (no yq/python dependency) and loops over every repo in sequence.
+Each repo is fully isolated: separate workspace, output dir, and last-commit
+SHA file. A failure in one repo is logged and the loop continues.
+
+FILES CHANGED
+-------------
+k8s/repos-configmap.yaml   NEW  - per-repo list; edit this to add/remove repos
+k8s/configmap.yaml         UPD  - removed single-repo GIT_REPO_URL/APP_NAME;
+                                   renamed QSE_OUTPUT_DIR->QSE_OUTPUT_BASE_DIR,
+                                   LAST_COMMIT_FILE->LAST_COMMIT_BASE_DIR
+k8s/cronjob.yaml           UPD  - mounts qse-pod-repos at /etc/qse-repos/
+k8s/serviceaccount.yaml    UPD  - added get permission on qse-pod-repos
+scripts/scan.sh            UPD  - parse_repos_file(), repo_slug(), scan_repo()
+                                   loop replaces single-repo main()
+install.sh                 UPD  - applies repos-configmap.yaml in sequence
+env.example                UPD  - replaced GIT_REPO_URL with REPOS_FILE; updated
+                                   path variable names
+README.md                  UPD  - new section "Managing the Repository List"
+
+HOW TO ADD A REPOSITORY (no restart needed)
+-------------------------------------------
+Option 1 (GitOps): edit k8s/repos-configmap.yaml, then:
+  kubectl apply -f k8s/repos-configmap.yaml -n qse-pod
+
+Option 2 (live edit):
+  kubectl edit configmap qse-pod-repos -n qse-pod
+  Add a "- url:" block under repos:, save. Takes effect on next CronJob run.
+
+REPOS FILE FORMAT (k8s/repos-configmap.yaml → data.repos.yaml)
+---------------------------------------------------------------
+repos:
+  - url: https://github.com/your-org/repo.git
+    app_name: my-app          # optional; defaults to repo name
+    exclude_paths: src/test   # optional; overrides global EXCLUDE_PATHS
+
+PER-REPO ISOLATION (on PVC)
+----------------------------
+/opt/qse-pod/results/scans/<slug>/       QSE JSON scan output
+/opt/qse-pod/results/commits/<slug>.sha  last processed commit SHA
+
+Slug example: https://github.com/org/repo.git  →  org_repo
+
+CREDENTIAL NOTE
+---------------
+All repos share one GIT_TOKEN/GIT_USERNAME from the Secret.
+For repos needing different credentials, deploy a separate namespace instance.

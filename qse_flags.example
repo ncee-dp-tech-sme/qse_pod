@@ -1,0 +1,36 @@
+usage: cli.sh [-app <app>] [-app_ver <app_ver>] [-ccdir <ccdir>] [-cf <cf>] [-config <config>] [-da] [-ef <ef>] [-em <em>] [-h] [-i <i>] [-l <l>] [-log] [-nmo] [-o <o>] [-pf <pf>] [-sf <sf>] [-v]
+
+Here are some commonly used IBM Quantum Safe CLI commands for scanning various languages:
+
+    -app <app>           app_name : Application name. e.g. : 'SampleApp'
+                         
+    -app_ver <app_ver>   app_version : Version of the application being scanned.
+                         
+    -ccdir <ccdir>       class-catalogs_directory .This command is applicable only for Dart language scans.Default : resource:class-catalog
+                         
+    -cf <cf>             class_file_path : class files and dependent library details, applicable only for advance java language scan.  e.g. : /user/target/classes;/user/lib; or /user/lib/lib1.jar
+                         
+    -config <config>     config_file_path : Path to configuration properties file.
+                         
+    -da                  data_analytics : Option to enable Usage Analysis, currently available only for the Java language.
+                         
+    -ef <ef>             path_exclusion_filter Package name to be excluded during scan.
+                         
+    -em <em>             exact_match for the source package/file provided. This command is applicable only for Dart language scans.Default : true
+                         
+    -h                   help
+                         
+    -i <i>               input_folder : Input path for code package to scan.Default : <path>/<to>/scan_diirectory>
+                         
+    -l <l>               language_list {.go,.dart,.java,.py,.cpp,.cs}
+                         
+    -log                 enable_detail_log
+                         
+    -nmo                 name_matching_only : Name matching only. Applicable for only dart language.
+                         
+    -o <o>               output_folder  Default : qs_scan_result
+    -pf <pf>             path_filter : This command is applicable only for non java language scans.
+                         
+    -sf <sf>             source_filter : This command is applicable only for non java language scans.
+                         
+    -v                   version : IBM Quantum Safe Explorer CLI version

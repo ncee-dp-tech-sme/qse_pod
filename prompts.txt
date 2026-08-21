@@ -1,0 +1,91 @@
+You are a coding agent tasked with investigating and designing a solution to migrate a GitHub Actions workflow (provided in the attached file `actionsworkflow.example`) into a containerized workload that can run on both OpenShift and Kubernetes. Below are the full requirements and constraints. Produce a detailed investigation report and an actionable implementation plan, followed by all required code, configuration files, and manifests.
+
+---
+
+**CONTEXT AND REFERENCE FILES**
+
+- `actionsworkflow.example`: Contains an existing partial GitHub Actions workflow that executes a Quantum Safe Explorer (QSE) scan and saves results to a GitHub repository. Use this as the authoritative reference for the current scan logic, environment variables, tool invocations, and result handling.
+- `qse_flags.example`: Contains all supported command-line flags for the Quantum Safe Explorer tool. Study these flags carefully and use your judgment to select the appropriate flags to support all programming languages that QSE is capable of scanning.
+
+---
+
+**INVESTIGATION REQUIREMENTS**
+
+Before producing any implementation artifacts, investigate and document the following:
+
+1. Assess whether the existing GitHub Actions workflow logic can be fully replicated inside a container or pod running on OpenShift and Kubernetes. Identify any GitHub Actions-specific features, runner capabilities, or dependencies that must be replaced or adapted.
+2. Identify what base container image(s) are appropriate to run the QSE tool, support compilation of compiled languages (e.g., Java, Go, C/C++), and support direct scanning of interpreted languages (e.g., Python, JavaScript, TypeScript) without compilation.
+3. Identify all required runtime dependencies, build tools, SDKs, and compilers that must be present in the container image for full language coverage across all languages QSE supports.
+4. Assess how to detect new commits on a target Git repository from within a running container or pod, and determine the appropriate triggering mechanism (e.g., CronJob, event-driven trigger, polling loop).
+5. Assess the Guardium Cryptography Manager (GCM) API for uploading QSE scan results, document the expected API endpoint structure, required authentication mechanism using API keys, required request format, and any error handling considerations.
+6. Assess secret and credential management for API keys on both OpenShift and Kubernetes (e.g., Kubernetes Secrets, OpenShift Secrets, external secret operators).
+
+---
+
+**IMPLEMENTATION REQUIREMENTS**
+
+After the investigation, produce a complete implementation plan and all associated artifacts as follows:
+
+**1. Container Image**
+- Write a `Dockerfile` (and an equivalent `Containerfile` for OpenShift compatibility with Podman/Buildah) that:
+  - Is based on an appropriate base image.
+  - Installs all required compilers, build tools, runtimes, and SDKs needed to support all languages QSE can scan, including but not limited to Java, Python, Go, C, C++, JavaScript, TypeScript, and any others identified from `qse_flags.example`.
+  - Installs the QSE tool and all its dependencies.
+  - Installs Git and any other required utilities.
+  - Runs as a non-root user for OpenShift compatibility (OpenShift enforces arbitrary UID policies).
+  - Is structured for minimal image size where practical.
+
+**2. Scan Orchestration Script**
+- Write a shell script (or Python script if more appropriate) that performs the following steps in order:
+  1. Checks whether a new commit exists on the configured target Git repository since the last known processed commit. Store the last processed commit SHA persistently (e.g., via a PersistentVolumeClaim or ConfigMap).
+  2. If a new commit is detected, clones or downloads only the latest commit of the target repository to a temporary local directory.
+  3. Determines the primary language(s) of the repository and applies appropriate pre-compilation steps for compiled languages (Java, Go, C, C++, etc.) before scanning.
+  4. Executes the QSE scan using the appropriate flags from `qse_flags.example`, configured to handle all supported languages. Use your judgment to set flags for maximum language coverage and scan completeness.
+  5. After the scan completes, securely deletes the cloned repository from the local filesystem.
+  6. Uploads the QSE scan results to the Guardium Cryptography Manager server using its REST API, authenticating with an API key supplied via an environment variable or mounted Kubernetes Secret.
+  7. Handles errors at each step with appropriate logging, exit codes, and retry logic where applicable.
+
+**3. Kubernetes and OpenShift Manifests**
+- Produce the following Kubernetes/OpenShift manifest files in YAML:
+  - A `CronJob` manifest that schedules the scan container to run at a configurable interval (e.g., every hour or every night) to poll for new commits and trigger scans.
+  - A `Secret` manifest template for storing the GCM API key and any Git credentials required for private repositories (with placeholder values clearly marked).
+  - A `ConfigMap` manifest for storing non-sensitive configuration such as the target repository URL, GCM server URL, QSE configuration flags, and the last processed commit SHA (if ConfigMap-based persistence is chosen).
+  - A `PersistentVolumeClaim` manifest if file-based persistence is required for storing the last processed commit SHA or intermediate scan artifacts.
+  - A `ServiceAccount` manifest with the minimum required permissions, and an associated `Role` and `RoleBinding` if the pod needs to update a ConfigMap to persist the last commit SHA.
+  - An OpenShift-specific `SecurityContextConstraints` (SCC) or annotation to allow the pod to run correctly under OpenShift's security model.
+
+**4. Language Detection and Compilation Logic**
+- Within the scan orchestration script, implement logic to detect which languages are present in the cloned repository (e.g., by inspecting file extensions, build files such as `pom.xml`, `build.gradle`, `go.mod`, `Makefile`, `CMakeLists.txt`, `package.json`, `requirements.txt`, etc.).
+- For each detected compiled language, implement the appropriate build/compilation step prior to running QSE, so that QSE can scan compiled artifacts where required.
+- For interpreted languages, proceed directly to QSE scanning without a compilation step.
+- Document which QSE flags from `qse_flags.example` are applied for each language or scenario and explain your flag selection rationale.
+
+**5. API Integration with Guardium Cryptography Manager**
+- Implement a dedicated function or module within the orchestration script that:
+  - Accepts the path to the QSE scan results output file.
+  - Reads the GCM server URL and API key from environment variables or a mounted Secret.
+  - Constructs and sends the appropriate HTTP POST (or PUT) request to the GCM API to upload the scan results.
+  - Handles HTTP response codes, logs success or failure, and retries on transient errors (e.g., 5xx responses) with exponential backoff.
+  - Does not log or expose the API key in any output or log stream.
+
+**6. Documentation**
+- Produce a `README.md` file that explains:
+  - The overall architecture of the solution.
+  - How to build and push the container image.
+  - How to configure all Secrets and ConfigMaps before deployment.
+  - How to deploy the CronJob on Kubernetes and on OpenShift.
+  - How to monitor and troubleshoot the scan job.
+  - A mapping table of which QSE flags are used for which languages and why.
+
+---
+
+**CONSTRAINTS AND GUIDELINES**
+
+- All manifests must be compatible with both upstream Kubernetes (1.24+) and Red Hat OpenShift (4.x).
+- The container must be able to run under OpenShift's restricted SCC (arbitrary UID, no root).
+- All sensitive values (API keys, Git tokens) must be injected via Kubernetes Secrets and never hardcoded.
+- The solution must support scanning private Git repositories using credentials supplied via Secrets.
+- The QSE scan must clean up the cloned repository from the local filesystem after every scan run, whether the scan succeeds or fails (use a trap or finally-equivalent pattern).
+- All scripts must include error handling, meaningful log output with timestamps, and non-zero exit codes on failure.
+- Use your judgment based on the contents of `qse_flags.example` to select the optimal combination of QSE flags for complete language coverage. Document every flag choice with a rationale.
+- Where the GCM API specification is not fully known, make reasonable and clearly documented assumptions about the endpoint path, request body format (e.g., JSON or multipart), and authentication header format (e.g., `X-API-Key` or `Authorization: Bearer`), and flag these assumptions explicitly in the README.
