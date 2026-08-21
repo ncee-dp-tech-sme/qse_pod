@@ -16,7 +16,7 @@ A containerised, scheduled workload that runs IBM's **Quantum Safe Explorer (QSE
 8. [Deploying to Kubernetes or OpenShift](#deploying-to-kubernetes-or-openshift)
 9. [Monitoring and Troubleshooting](#monitoring-and-troubleshooting)
 10. [QSE Flag Reference and Rationale](#qse-flag-reference-and-rationale)
-11. [GCM API Assumptions](#gcm-api-assumptions)
+11. [GCM API Reference](#gcm-api-reference)
 12. [Security Design](#security-design)
 
 ---
@@ -49,7 +49,7 @@ A containerised, scheduled workload that runs IBM's **Quantum Safe Explorer (QSE
 
 - The **CronJob** fires on a configurable schedule (default: every hour).
 - The **Pod** runs `scan.sh`, which performs the full scan lifecycle.
-- **Sensitive credentials** (GCM API key, Git token) are stored in a Kubernetes `Secret` and injected as environment variables — never hardcoded.
+- **Sensitive credentials** (GCM Bearer token, Git token) are stored in a Kubernetes `Secret` and injected as environment variables — never hardcoded.
 - Non-sensitive config (repo URL, GCM URL, exclusions) lives in a `ConfigMap`.
 - The **last processed commit SHA** is written to a `PersistentVolumeClaim` and optionally patched back into the `ConfigMap` for visibility.
 
@@ -451,18 +451,60 @@ The QSE CLI (`cli.sh`) supports these flags (from `qse_flags.example`):
 
 ---
 
-## GCM API Assumptions
+## GCM API Reference
 
-The official GCM REST API specification was not available at time of writing. The following assumptions are made in `scan.sh` and should be verified against your GCM instance:
+`scan.sh` uploads findings to the GCM REST API using the following endpoints and conventions.
 
-| Assumption | Value assumed | Verify with |
+### Endpoints
+
+| Findings file | HTTP method | Endpoint |
 |---|---|---|
-| Upload endpoint | `POST {GCM_SERVER_URL}/api/v1/scans` | GCM API docs |
-| Authentication header | `X-API-Key: <key>` | GCM API docs — may be `Authorization: Bearer <key>` |
-| Request body format | `multipart/form-data` with field `results` (JSON file) + `app_name` + `app_version` | GCM API docs — may require pure JSON body |
-| Success HTTP codes | `2xx` | GCM API docs |
+| `quantum_safe_api_discovery_findings.json` | `POST` | `{GCM_SERVER_URL}/ibm/pv/api/v1/upload-qse-findings/discovery?repositoryUrl=<encoded-repo-url>` |
+| `quantum_safe_cryptography_analysis_findings_*.json` | `POST` | `{GCM_SERVER_URL}/ibm/pv/api/v1/upload-qse-findings/analytics?repositoryUrl=<encoded-repo-url>` |
 
-To adjust the upload call, edit the `upload_to_gcm()` function in [`scripts/scan.sh`](scripts/scan.sh).
+The scanned repository URL is URL-encoded and passed as the `repositoryUrl` query parameter. Both files may be uploaded in the same run if both are present in the output directory.
+
+### Authentication headers
+
+```
+Authorization: Bearer <GCM_BEARER_TOKEN>
+token_type: api_key
+```
+
+`GCM_BEARER_TOKEN` is injected from the `qse-pod-secrets` Kubernetes Secret and is never logged.
+
+### Request format
+
+```
+Content-Type: multipart/form-data
+file=@<findings-file>;type=application/json
+```
+
+### Example curl commands
+
+```bash
+# Upload discovery findings
+curl -X POST \
+  '{GCM_SERVER_URL}/ibm/pv/api/v1/upload-qse-findings/discovery?repositoryUrl=https%3A%2F%2Fgithub.com%2Forg%2Frepo' \
+  -H 'accept: application/json' \
+  -H 'Authorization: Bearer <GCM_BEARER_TOKEN>' \
+  -H 'token_type: api_key' \
+  -H 'Content-Type: multipart/form-data' \
+  -F 'file=@quantum_safe_api_discovery_findings.json;type=application/json'
+
+# Upload analytics findings
+curl -X POST \
+  '{GCM_SERVER_URL}/ibm/pv/api/v1/upload-qse-findings/analytics?repositoryUrl=https%3A%2F%2Fgithub.com%2Forg%2Frepo' \
+  -H 'accept: application/json' \
+  -H 'Authorization: Bearer <GCM_BEARER_TOKEN>' \
+  -H 'token_type: api_key' \
+  -H 'Content-Type: multipart/form-data' \
+  -F 'file=@quantum_safe_cryptography_analysis_findings_java.json;type=application/json'
+```
+
+### Retry behaviour
+
+Transient server errors (HTTP 5xx) and curl errors are retried up to **3 times** with exponential backoff (5 s → 10 s → 20 s). Client errors (HTTP 4xx) fail immediately without retry.
 
 ---
 
