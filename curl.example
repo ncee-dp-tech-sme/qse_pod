@@ -1,0 +1,13 @@
+# upload analytics findings file
+curl -X 'POST' \
+  'https://gcmapp.apps.itz-pcqkgw.hub01-lb.techzone.ibm.com/ibm/pv/api/v1/upload-qse-findings/analytics?repositoryUrl=https%3A%2F%2Fgithub.com%2Fncee-dp-tech-sme%2Fapi_cbomtest%2Fpqc-smoke-java' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: multipart/form-data' \
+  -F 'file=@quantum_safe_cryptography_analysis_findings_java.json;type=application/json'
+
+# upload discovery findings file
+  curl -X 'POST' \
+  'https://gcmapp.apps.itz-pcqkgw.hub01-lb.techzone.ibm.com/ibm/pv/api/v1/upload-qse-findings/discovery?repositoryUrl=https%3A%2F%2Fgithub.com%2Fncee-dp-tech-sme%2Fcbomtest%2Fapi_cbomtest%2Fpqc-smoke-py' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: multipart/form-data' \
+  -F 'file=@quantum_safe_api_discovery_findings.json;type=application/json'

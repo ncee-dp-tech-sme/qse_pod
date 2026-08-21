@@ -83,11 +83,11 @@ spec:
 
               # ---- Sensitive env vars from Secret ----------------------------
               env:
-                - name: GCM_API_KEY
+                - name: GCM_BEARER_TOKEN
                   valueFrom:
                     secretKeyRef:
                       name: qse-pod-secrets
-                      key: GCM_API_KEY
+                      key: GCM_BEARER_TOKEN
                 - name: GIT_USERNAME
                   valueFrom:
                     secretKeyRef:

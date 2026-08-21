@@ -15,7 +15,7 @@
 #   GIT_USERNAME        - Git username for private repos (optional)
 #   GIT_TOKEN           - Git personal access token (optional)
 #   GCM_SERVER_URL      - GCM base URL, e.g. https://gcm.example.com
-#   GCM_API_KEY         - GCM API key for authentication
+#   GCM_BEARER_TOKEN    - Bearer token for GCM API authentication
 #   APP_VERSION         - Version label override (default: commit short SHA)
 #   EXCLUDE_PATHS       - Default comma-separated paths to exclude (per-repo can override)
 #   PY_MODULE_PATH      - Optional path(s) for pip-installed or external Python modules
@@ -40,6 +40,7 @@
 #   2026-08-21 04:01:56 - Added .env loading, confirmation prompt, coding-standards compliance
 #   2026-08-21 04:10:14 - Multi-repo support: read repo list from mounted ConfigMap file
 #   2026-08-21 10:00:00 - Python scanning: add compile_python (pip install), -da flag, -py_module_path support
+#   2026-08-22 00:00:00 - Upload flow: discovery/analytics endpoints, Bearer token auth, repo URL as query param
 # =============================================================================
 
 set -euo pipefail
@@ -139,7 +140,7 @@ confirm_execution() {
 # ---- Validate required global env vars -- 2026-08-21 04:01:56 ---------------
 validate_env() {
     local missing=0
-    for var in GCM_SERVER_URL GCM_API_KEY; do
+    for var in GCM_SERVER_URL GCM_BEARER_TOKEN; do
         if [[ -z "${!var:-}" ]]; then
             error "Required environment variable '${var}' is not set."
             missing=1
@@ -549,32 +550,21 @@ check_critical_findings() {
     fi
 }
 
-# ---- POST scan results to GCM with retry/backoff -- 2026-08-21 04:01:56 -----
-# ASSUMPTIONS (adjust when official GCM API spec is available):
-#   Endpoint : POST ${GCM_SERVER_URL}/api/v1/scans
-#   Auth     : X-API-Key header
-#   Body     : multipart/form-data — field "results" (JSON file) + metadata
-#   Success  : HTTP 2xx
-#   Retry    : exponential backoff on 5xx; no retry on 4xx
-upload_to_gcm() {
-    local output_dir="$1" app_name="$2" app_version="${APP_VERSION:-unknown}"
-    local endpoint="${GCM_SERVER_URL%/}/api/v1/scans"
-
-    local result_file
-    result_file=$(find "${output_dir}" -name "*.json" | head -1)
-    if [[ -z "${result_file}" ]]; then
-        error "No JSON result file found in ${output_dir}."
-        return 1
-    fi
-
-    info "Uploading to GCM: ${endpoint}"
-    info "Result file: ${result_file}"
-
+# ---- Internal: POST a single findings file to a GCM endpoint -- 2026-08-22 00:00:00
+# Args: $1 full endpoint URL (including ?repositoryUrl=... query param)
+#       $2 path to the JSON findings file
+# Auth: Authorization: Bearer <GCM_BEARER_TOKEN>  +  token_type: api_key header
+# Retry: exponential backoff on 5xx / curl errors; no retry on 4xx
+_gcm_post_file() {
+    local endpoint="$1" findings_file="$2"
     local attempt=0 delay="${RETRY_BASE_DELAY}" http_code
+
+    info "Uploading to GCM endpoint: ${endpoint}"
+    info "  Findings file: ${findings_file}"
 
     while [[ "${attempt}" -lt "${MAX_RETRIES}" ]]; do
         attempt=$(( attempt + 1 ))
-        info "GCM upload attempt ${attempt}/${MAX_RETRIES}..."
+        info "  Attempt ${attempt}/${MAX_RETRIES}..."
 
         local resp_file
         resp_file=$(mktemp)
@@ -584,10 +574,11 @@ upload_to_gcm() {
             --output "${resp_file}" \
             --max-time 120 \
             -X POST "${endpoint}" \
-            -H "X-API-Key: ${GCM_API_KEY}" \
-            -F "results=@${result_file};type=application/json" \
-            -F "app_name=${app_name}" \
-            -F "app_version=${app_version}" \
+            -H "accept: application/json" \
+            -H "Authorization: Bearer ${GCM_BEARER_TOKEN}" \
+            -H "token_type: api_key" \
+            -H "Content-Type: multipart/form-data" \
+            -F "file=@${findings_file};type=application/json" \
         )
         local curl_rc=$? resp_body
         resp_body=$(cat "${resp_file}"); rm -f "${resp_file}"
@@ -614,6 +605,54 @@ upload_to_gcm() {
 
     error "GCM upload failed after ${MAX_RETRIES} attempts."
     return 1
+}
+
+# ---- Upload findings files to GCM using the correct endpoint -- 2026-08-22 00:00:00
+# Detects which findings files are present in output_dir and routes each to the
+# matching GCM endpoint:
+#   quantum_safe_api_discovery_findings.json            → /upload-qse-findings/discovery
+#   quantum_safe_cryptography_analysis_findings_*.json  → /upload-qse-findings/analytics
+# The repo URL is URL-encoded and passed as ?repositoryUrl= query parameter.
+upload_to_gcm() {
+    local output_dir="$1" repo_url="$2"
+    local base_url="${GCM_SERVER_URL%/}/ibm/pv/api/v1/upload-qse-findings"
+
+    # URL-encode the repository URL for use in a query string
+    local encoded_url
+    encoded_url=$(python3 -c \
+        "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=''))" \
+        "${repo_url}")
+
+    local uploaded=0
+
+    # Discovery findings file (fixed name)
+    local discovery_file="${output_dir}/quantum_safe_api_discovery_findings.json"
+    if [[ -f "${discovery_file}" ]]; then
+        _gcm_post_file \
+            "${base_url}/discovery?repositoryUrl=${encoded_url}" \
+            "${discovery_file}" || return 1
+        uploaded=$(( uploaded + 1 ))
+    fi
+
+    # Analytics findings file (name includes a language/version suffix)
+    local analytics_file
+    analytics_file=$(find "${output_dir}" -maxdepth 1 \
+        -name "quantum_safe_cryptography_analysis_findings_*.json" | head -1)
+    if [[ -n "${analytics_file}" ]]; then
+        _gcm_post_file \
+            "${base_url}/analytics?repositoryUrl=${encoded_url}" \
+            "${analytics_file}" || return 1
+        uploaded=$(( uploaded + 1 ))
+    fi
+
+    if [[ "${uploaded}" -eq 0 ]]; then
+        error "No recognised findings files found in ${output_dir}."
+        error "Expected 'quantum_safe_api_discovery_findings.json' and/or"
+        error "'quantum_safe_cryptography_analysis_findings_*.json'."
+        return 1
+    fi
+
+    info "GCM upload complete — ${uploaded} file(s) uploaded."
 }
 
 # ---- Scan a single repository -- 2026-08-21 04:10:14 ------------------------
@@ -694,7 +733,7 @@ scan_repo() {
     # Step 6 — check findings and upload
     info "Step 6/7: Checking findings and uploading to GCM..."
     check_critical_findings "${output_dir}"
-    upload_to_gcm "${output_dir}" "${app_name}" || {
+    upload_to_gcm "${output_dir}" "${repo_url}" || {
         error "GCM upload failed for ${app_name}. SHA will NOT be saved."
         return 1
     }

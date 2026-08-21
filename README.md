@@ -21,10 +21,6 @@ A containerised, scheduled workload that runs IBM's **Quantum Safe Explorer (QSE
 
 ---
 
-## TODO
-- Validate and complete IBM Guardium Crypography upload flow with correct URL
-- Add a section to the flow which updates the generated findings and discovery files with the required metadata
-
 ## Architecture Overview
 
 ```
@@ -112,7 +108,11 @@ Leave `PY_MODULE_PATH` empty (the default) to use Option 1.
 A `trap` on `EXIT INT TERM` guarantees the cloned repository is deleted from the container filesystem whether the scan succeeds, fails, or is interrupted. Nothing from the target repository persists in the container after the pod exits.
 
 ### Step 6 — Upload results to GCM
-The JSON output from QSE is uploaded to the GCM REST API via `curl`. The `GCM_API_KEY` is passed in the `X-API-Key` header and is **never logged**. Transient server errors (HTTP 5xx) are retried with exponential backoff (up to 3 attempts). Client errors (HTTP 4xx) fail immediately. See [GCM API Assumptions](#gcm-api-assumptions).
+The QSE findings files are uploaded to the GCM REST API via `curl`. The script auto-detects which output files are present and routes each to the correct endpoint:
+- `quantum_safe_api_discovery_findings.json` → `POST /ibm/pv/api/v1/upload-qse-findings/discovery?repositoryUrl=…`
+- `quantum_safe_cryptography_analysis_findings_*.json` → `POST /ibm/pv/api/v1/upload-qse-findings/analytics?repositoryUrl=…`
+
+Authentication uses `Authorization: Bearer <GCM_BEARER_TOKEN>` + `token_type: api_key` headers. The token is **never logged**. Transient server errors (HTTP 5xx) are retried with exponential backoff (up to 3 attempts). Client errors (HTTP 4xx) fail immediately.
 
 ### Step 7 — Persist the commit SHA
 The processed commit SHA is written per-repo to `LAST_COMMIT_BASE_DIR/<slug>.sha` on the PVC. Optionally, the ConfigMap is also patched via `kubectl patch` with a key per repo (`<slug>_last_sha`).
@@ -232,7 +232,7 @@ All values are set in `k8s/configmap.yaml` (non-sensitive) and `k8s/secret.yaml`
 
 | Key | Description |
 |---|---|
-| `GCM_API_KEY` | API key for authenticating to GCM |
+| `GCM_BEARER_TOKEN` | Bearer token for authenticating to GCM |
 | `GIT_USERNAME` | Git username for private repositories |
 | `GIT_TOKEN` | Git personal access token for private repositories |
 
@@ -281,7 +281,7 @@ Edit `k8s/secret.yaml` and replace all `REPLACE_WITH_*` placeholder values with 
 
 ```yaml
 stringData:
-  GCM_API_KEY: "your-real-gcm-api-key"
+  GCM_BEARER_TOKEN: "your-real-gcm-bearer-token"
   GIT_USERNAME: "your-git-username"
   GIT_TOKEN: "your-git-personal-access-token"
 ```
@@ -413,7 +413,7 @@ kubectl run reset --rm -it --image=busybox \
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | Pod exits 0 with "No new commits" | Expected behaviour — SHA unchanged | Trigger manually or reset SHA |
-| `GCM_API_KEY is not set` error | Secret not applied or wrong key name | Re-apply `k8s/secret.yaml` |
+| `GCM_BEARER_TOKEN is not set` error | Secret not applied or wrong key name | Re-apply `k8s/secret.yaml` |
 | Git clone fails with 128 | Invalid `GIT_TOKEN` or private repo | Check `GIT_TOKEN` in Secret |
 | `QSE CLI not found` | Wrong `QSE_HOME` or bad image | Verify image build with `--build-arg QSE_TOKEN` |
 | OpenShift: `unable to validate against SCC` | SCC not applied | Run `oc apply -f k8s/scc.yaml` as cluster-admin |
@@ -470,7 +470,7 @@ To adjust the upload call, edit the `upload_to_gcm()` function in [`scripts/scan
 
 - **No secrets hardcoded**: all credentials are injected via Kubernetes Secrets as environment variables.
 - **`env.example`** is the only file with credential fields; `.env` (with real values) is gitignored.
-- **API key never logged**: the `GCM_API_KEY` variable is only used inside the `curl -H` argument and is never echoed or printed.
+- **Bearer token never logged**: the `GCM_BEARER_TOKEN` variable is only used inside the `curl -H` argument and is never echoed or printed.
 - **Workspace cleanup on any exit**: a `trap EXIT INT TERM` deletes the cloned repository regardless of whether the scan succeeds or fails.
 - **Non-root container**: the image runs as UID 1001, with all directories group-writable for GID 0 (OpenShift's arbitrary UID pattern).
 - **QSE token is build-time only**: the `QSE_TOKEN` used to clone the QSE CLI is a Docker `ARG` in the builder stage and is absent from the final runtime image layer.
