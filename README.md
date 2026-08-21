@@ -3,7 +3,7 @@
 A containerised, scheduled workload that runs IBM's **Quantum Safe Explorer (QSE)** cryptographic scanner against **multiple Git repositories** and uploads findings to **Guardium Cryptography Manager (GCM)**. Designed to run on both upstream Kubernetes (1.24+) and Red Hat OpenShift 4.x.
 
 ---
-[QSE POD Github Reository](https://github.com/ncee-dp-tech-sme/qse_pod)
+[QSE POD Github Repository](https://github.com/ncee-dp-tech-sme/qse_pod)
 ## Table of Contents
 
 1. [Architecture Overview](#architecture-overview)
