@@ -41,6 +41,7 @@
 #   2026-08-21 04:10:14 - Multi-repo support: read repo list from mounted ConfigMap file
 #   2026-08-21 10:00:00 - Python scanning: add compile_python (pip install), -da flag, -py_module_path support
 #   2026-08-22 00:00:00 - Upload flow: discovery/analytics endpoints, Bearer token auth, repo URL as query param
+#   2026-08-22 00:00:00 - IFS scoping: replaced IFS+array[*] with printf -v to eliminate semgrep IFS-splitting finding
 # =============================================================================
 
 set -euo pipefail
@@ -458,8 +459,9 @@ compile_dart() {
 
 # ---- Build the comma-separated -l flag value -- 2026-08-21 04:01:56 ---------
 build_language_flag() {
-    local IFS=','
-    echo "${DETECTED_LANGUAGES[*]}"
+    local result
+    printf -v result '%s,' "${DETECTED_LANGUAGES[@]}"
+    echo "${result%,}"
 }
 
 # ---- Build -cf value from compiled Java artefact dirs -- 2026-08-21 04:01:56
@@ -471,8 +473,9 @@ build_java_cf_flag() {
     [[ -d "${repo_dir}/build/classes" ]]     && cf_parts+=("${repo_dir}/build/classes")
     [[ -d "${repo_dir}/build/libs" ]]        && cf_parts+=("${repo_dir}/build/libs")
     if [[ "${#cf_parts[@]}" -gt 0 ]]; then
-        local IFS=';'
-        echo "${cf_parts[*]}"
+        local result
+        printf -v result '%s;' "${cf_parts[@]}"
+        echo "${result%;}"
     fi
 }
 
