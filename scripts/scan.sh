@@ -18,6 +18,8 @@
 #   GCM_API_KEY         - GCM API key for authentication
 #   APP_VERSION         - Version label override (default: commit short SHA)
 #   EXCLUDE_PATHS       - Default comma-separated paths to exclude (per-repo can override)
+#   PY_MODULE_PATH      - Optional path(s) for pip-installed or external Python modules
+#                         Passed as -py_module_path to the QSE CLI when set
 #   QSE_OUTPUT_BASE_DIR - Base dir for scan outputs; sub-dirs created per repo
 #                         Default: /opt/qse-pod/results/scans
 #   LAST_COMMIT_BASE_DIR- Base dir for per-repo last-commit SHA files
@@ -37,6 +39,7 @@
 #   2026-08-21 04:01:56 - Initial creation: multi-language scan + GCM upload
 #   2026-08-21 04:01:56 - Added .env loading, confirmation prompt, coding-standards compliance
 #   2026-08-21 04:10:14 - Multi-repo support: read repo list from mounted ConfigMap file
+#   2026-08-21 10:00:00 - Python scanning: add compile_python (pip install), -da flag, -py_module_path support
 # =============================================================================
 
 set -euo pipefail
@@ -282,7 +285,7 @@ cleanup_repo() {
 
 # ---- Inspect repo and set DETECTED_LANGUAGES + build flags -- 2026-08-21 04:01:56
 # Sets globals: DETECTED_LANGUAGES[], NEEDS_JAVA_BUILD, NEEDS_GO_BUILD,
-#               NEEDS_CPP_BUILD, NEEDS_DOTNET_BUILD, NEEDS_DART_BUILD
+#               NEEDS_CPP_BUILD, NEEDS_DOTNET_BUILD, NEEDS_DART_BUILD, NEEDS_PYTHON_DEPS
 detect_languages() {
     local repo_dir="$1"
     DETECTED_LANGUAGES=()
@@ -291,6 +294,7 @@ detect_languages() {
     NEEDS_CPP_BUILD=false
     NEEDS_DOTNET_BUILD=false
     NEEDS_DART_BUILD=false
+    NEEDS_PYTHON_DEPS=false
 
     if find "${repo_dir}" \( -name "*.java" -o -name "pom.xml" \
             -o -name "build.gradle" -o -name "build.gradle.kts" \) \
@@ -308,7 +312,7 @@ detect_languages() {
     if find "${repo_dir}" \( -name "*.py" -o -name "requirements.txt" \
             -o -name "pyproject.toml" -o -name "setup.py" \) \
             2>/dev/null | grep -q .; then
-        DETECTED_LANGUAGES+=(".py")
+        DETECTED_LANGUAGES+=(".py"); NEEDS_PYTHON_DEPS=true
         info "Detected language: Python"
     fi
 
@@ -412,6 +416,34 @@ compile_dotnet() {
     info ".NET compilation done."
 }
 
+# ---- pip install Python dependencies before scan -- 2026-08-21 10:00:00 -----
+# Installs into the repo-local venv at <repo>/.qse-venv so the QSE CLI can
+# resolve imports. Uses requirements.txt / pyproject.toml if present.
+compile_python() {
+    local repo_dir="$1"
+    info "--- Python: dependency installation ---"
+
+    local venv_dir="${repo_dir}/.qse-venv"
+    python3 -m venv "${venv_dir}" \
+        || { warn "Could not create Python venv — skipping pip install."; return 0; }
+
+    local pip="${venv_dir}/bin/pip"
+
+    if [[ -f "${repo_dir}/requirements.txt" ]]; then
+        info "Installing from requirements.txt..."
+        "${pip}" install --quiet -r "${repo_dir}/requirements.txt" \
+            || warn "pip install requirements.txt had errors (non-fatal)."
+    fi
+
+    if [[ -f "${repo_dir}/pyproject.toml" ]] || [[ -f "${repo_dir}/setup.py" ]]; then
+        info "Installing package in editable mode..."
+        "${pip}" install --quiet -e "${repo_dir}" \
+            || warn "pip install -e had errors (non-fatal)."
+    fi
+
+    info "Python dependency step done."
+}
+
 # ---- dart pub get dependency fetch -- 2026-08-21 04:01:56 -------------------
 compile_dart() {
     local repo_dir="$1"
@@ -470,6 +502,16 @@ run_qse_scan() {
     if [[ -n "${CURRENT_EXCLUDE_PATHS:-}" ]]; then
         cli_args+=(-ef "${CURRENT_EXCLUDE_PATHS}")
         info "  Exclusions: ${CURRENT_EXCLUDE_PATHS}"
+    fi
+
+    # Python: enable Usage Analysis (-da) always; supply module path if configured
+    if [[ " ${DETECTED_LANGUAGES[*]} " == *" .py "* ]]; then
+        cli_args+=(-da)
+        info "  Python -da enabled"
+        if [[ -n "${PY_MODULE_PATH:-}" ]]; then
+            cli_args+=(-py_module_path "${PY_MODULE_PATH}")
+            info "  Python -py_module_path: ${PY_MODULE_PATH}"
+        fi
     fi
 
     # Java: enable Usage Analysis (-da) and supply class/dep paths (-cf)
@@ -629,6 +671,7 @@ scan_repo() {
         detect_languages "${workspace_dir}"
         [[ "${NEEDS_JAVA_BUILD}"   == "true" ]] && compile_java   "${workspace_dir}"
         [[ "${NEEDS_GO_BUILD}"     == "true" ]] && compile_go     "${workspace_dir}"
+        [[ "${NEEDS_PYTHON_DEPS}"  == "true" ]] && compile_python "${workspace_dir}"
         [[ "${NEEDS_CPP_BUILD}"    == "true" ]] && compile_cpp    "${workspace_dir}"
         [[ "${NEEDS_DOTNET_BUILD}" == "true" ]] && compile_dotnet "${workspace_dir}"
         [[ "${NEEDS_DART_BUILD}"   == "true" ]] && compile_dart   "${workspace_dir}"

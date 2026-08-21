@@ -79,7 +79,31 @@ The script inspects file extensions and build descriptor files to determine whic
 | C/C++ | `*.cpp`, `*.cc`, `CMakeLists.txt`, `Makefile` | `cmake + make` / `make` |
 | C# | `*.cs`, `*.csproj`, `*.sln` | `dotnet build` |
 | Dart | `*.dart`, `pubspec.yaml` | `dart pub get` |
-| Python | `*.py`, `requirements.txt` | *(interpreted — no build step)* |
+| Python | `*.py`, `requirements.txt`, `pyproject.toml`, `setup.py` | `pip install` into isolated venv (see [Python Dependency Handling](#python-dependency-handling)) |
+
+### Python Dependency Handling
+
+Before the QSE scan runs on a Python repository, `scan.sh` ensures all imports are resolvable using one of two strategies:
+
+**Option 1 — Install dependencies in the project directory (default)**
+
+The script automatically creates an isolated virtualenv at `<repo>/.qse-venv` and installs dependencies from `requirements.txt` and/or `setup.py` / `pyproject.toml` if present. The venv directory is excluded from the scan via `EXCLUDE_PATHS`. No manual steps are required.
+
+**Option 2 — Specify an external module path**
+
+If your dependencies are pre-installed in a separate location (e.g. a shared site-packages directory mounted into the container), set `PY_MODULE_PATH` in `k8s/configmap.yaml`:
+
+```yaml
+PY_MODULE_PATH: "/opt/site-packages"
+```
+
+This value is passed directly to the QSE CLI as `-py_module_path`. It can also point to a virtualenv's site-packages directory:
+
+```yaml
+PY_MODULE_PATH: "/opt/my-venv/lib/python3.11/site-packages"
+```
+
+Leave `PY_MODULE_PATH` empty (the default) to use Option 1.
 
 ### Step 4 — Run the QSE scan
 `cli.sh` is executed with the flags appropriate for all detected languages. See [QSE Flag Reference](#qse-flag-reference-and-rationale) for the full flag rationale.
@@ -193,15 +217,15 @@ All values are set in `k8s/configmap.yaml` (non-sensitive) and `k8s/secret.yaml`
 
 | Key | Description | Default |
 |---|---|---|
-| `GIT_REPO_URL` | HTTPS or SSH URL of the repository to scan | *(required)* |
 | `GCM_SERVER_URL` | Base URL of the GCM server | *(required)* |
-| `APP_NAME` | Application name label in GCM results | auto: repo name |
-| `APP_VERSION` | Version label | auto: commit SHA |
-| `EXCLUDE_PATHS` | Comma-separated paths excluded from scan | `src/test,vendor,node_modules,.git` |
-| `QSE_OUTPUT_DIR` | Where QSE writes its JSON results | `/opt/qse-pod/results/qs_scan_result` |
-| `LAST_COMMIT_FILE` | File path for last processed commit SHA | `/opt/qse-pod/results/last_commit` |
+| `APP_VERSION` | Version label applied to all repos | auto: commit SHA |
+| `EXCLUDE_PATHS` | Comma-separated paths excluded from scan | `src/test,vendor,node_modules,.git,venv,.qse-venv` |
+| `PY_MODULE_PATH` | Optional path to pre-installed Python modules; passed as `-py_module_path` to QSE CLI (Option 2). Leave empty to auto-install via pip (Option 1) | `""` |
+| `QSE_OUTPUT_BASE_DIR` | Base directory for QSE JSON results; sub-directories created per repo | `/opt/qse-pod/results/scans` |
+| `LAST_COMMIT_BASE_DIR` | Base directory for per-repo last-commit SHA files | `/opt/qse-pod/results/commits` |
 | `SCAN_ALL_LANGUAGES` | Force all languages regardless of detection | `false` |
-| `CONFIGMAP_NAME` | ConfigMap to patch with commit SHA (optional) | — |
+| `REPOS_FILE` | Path where the repos ConfigMap is mounted | `/etc/qse-repos/repos.yaml` |
+| `CONFIGMAP_NAME` | ConfigMap to patch with per-repo commit SHAs (optional) | — |
 | `CONFIGMAP_NAMESPACE` | Namespace of above ConfigMap | — |
 
 ### Secret values
@@ -262,16 +286,19 @@ stringData:
   GIT_TOKEN: "your-git-personal-access-token"
 ```
 
-### Step 2 — Configure the target repository and GCM URL
+### Step 2 — Configure the GCM URL and Python module path (optional)
 
 Edit `k8s/configmap.yaml`:
 
 ```yaml
 data:
-  GIT_REPO_URL: "https://github.com/your-org/your-repo.git"
   GCM_SERVER_URL: "https://gcm.your-domain.com"
-  APP_NAME: "your-application-name"
+  # Optional: set to a pre-installed Python modules path (Option 2).
+  # Leave empty to auto-install Python deps via pip (Option 1, default).
+  PY_MODULE_PATH: ""
 ```
+
+Then add your repositories to `k8s/repos-configmap.yaml` (see [Managing the Repository List](#managing-the-repository-list)).
 
 ### Step 3 — Update the image reference
 
@@ -407,7 +434,8 @@ The QSE CLI (`cli.sh`) supports these flags (from `qse_flags.example`):
 | `-app_ver` | `$APP_VERSION` or short commit SHA | All | Version label; ties scan results to a specific code revision |
 | `-log` | *(flag only)* | All | Enables detailed log output; essential for troubleshooting in a containerised environment where logs are the only diagnostic channel |
 | `-ef` | `$EXCLUDE_PATHS` | All | Excludes test directories, vendor code, and generated files from the scan to reduce noise |
-| `-da` | *(flag only)* | Java only | Enables Usage Analysis: traces how cryptographic APIs are called through the call graph, not just where they are referenced. Only applicable and useful for Java |
+| `-da` | *(flag only)* | Java, Python | Enables Usage Analysis: traces how cryptographic APIs are called through the call graph. Required for Python; for Java only applied when compiled class files are present |
+| `-py_module_path` | `$PY_MODULE_PATH` | Python only | Path to externally installed Python modules (Option 2). Omitted when `PY_MODULE_PATH` is empty — QSE then resolves imports from the pip-installed venv created during Step 3 |
 | `-cf` | `target/classes;target/dependency` or `build/classes;build/libs` | Java only | Required for Java advanced scan: points QSE to compiled class files and dependency JARs so it can perform bytecode-level analysis, which is more accurate than source-only scanning |
 | `-em` | `true` | Dart only | Enables exact package name matching for Dart, reducing false positives from partial name matches in pub packages |
 

@@ -4,6 +4,7 @@
 # Changes:
 #   2026-08-21 - Initial creation
 #   2026-08-21 04:10:14 - Removed single-repo GIT_REPO_URL/APP_NAME; repos now in qse-pod-repos ConfigMap
+#   2026-08-21 10:00:00 - Added PY_MODULE_PATH; added venv to default EXCLUDE_PATHS
 # =============================================================================
 apiVersion: v1
 kind: ConfigMap
@@ -20,7 +21,7 @@ data:
   APP_VERSION: ""
 
   # Default comma-separated exclusion paths (can be overridden per-repo in qse-pod-repos)
-  EXCLUDE_PATHS: "src/test,vendor,node_modules,.git"
+  EXCLUDE_PATHS: "src/test,vendor,node_modules,.git,venv,.qse-venv"
 
   # QSE output base directory — results per repo stored in a subdirectory
   QSE_OUTPUT_BASE_DIR: "/opt/qse-pod/results/scans"
@@ -37,3 +38,8 @@ data:
 
   # Path where the repos list ConfigMap is mounted inside the container
   REPOS_FILE: "/etc/qse-repos/repos.yaml"
+
+  # Optional: path(s) to external Python modules (passed as -py_module_path to QSE CLI).
+  # Leave empty to rely on dependencies installed in the project directory.
+  # Example: "/opt/site-packages" or "/path/to/venv/lib/python3.11/site-packages"
+  PY_MODULE_PATH: ""
