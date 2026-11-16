@@ -1,0 +1,10 @@
+PROMPT: 1 more change, I want the upload to GCM be optional, it should be off as default.  Don't forget to update all related files
+DATE: Tue 17 Nov 2026 00:46:11 CET
+
+Changes:
+- scripts/scan.sh: new GCM_UPLOAD_ENABLED (default false). validate_env requires GCM_SERVER_URL/GCM_BEARER_TOKEN only when true; step 6 skipped when false (results stay on PVC); confirmation summary reflects state; SHA saved after successful scan (and upload when enabled). Changes log + header updated.
+- env.example, k8s/configmap.yaml: added GCM_UPLOAD_ENABLED=false.
+- k8s/cronjob.yaml: GCM_BEARER_TOKEN secretKeyRef optional: true.
+- k8s/secret.yaml: GCM_BEARER_TOKEN commented out (so install.sh REPLACE_WITH check passes without GCM).
+- README.md, AGENTS.md: docs updated (intro, flow, config/secret tables, deploy steps, troubleshooting, GCM API ref, security design).
+Validation: bash -n OK; YAML parses; validate_env checked with upload off/on.

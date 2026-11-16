@@ -1,10 +1,12 @@
 # Containerfile is functionally identical to Dockerfile.
 # Provided for Podman/Buildah compatibility on OpenShift.
-# Build with:  podman build --build-arg QSE_TOKEN=<token> -t qse-pod:latest .
+# Build with:  podman build --secret id=QSE_TOKEN,env=QSE_TOKEN -t qse-pod:latest .
 #
 # Changes:
 #   2026-08-21 - Initial creation (mirrors Dockerfile)
 #   2026-08-21 - Made QSE CLI repo URL configurable via QSE_REPO_URL build arg
+#   2026-11-16 23:51:00 - Use secret mount for QSE_TOKEN instead of build ARG
+#   2026-11-17 00:13:28 - Made QSE CLI repo default and sub-directory configurable (QSE_REPO_URL, QSE_CLI_SUBDIR)
 
 # Source the Dockerfile content - Podman/Buildah fully support Dockerfile syntax
 # This file exists as the conventional name for OpenShift/Podman toolchains.
@@ -14,8 +16,9 @@
 # =============================================================================
 FROM registry.access.redhat.com/ubi9/ubi AS builder
 
-ARG QSE_TOKEN
-ARG QSE_REPO_URL=https://github.ibm.com/quantum-safe-engineering/quantum-safe-read-repos.git
+# QSE_REPO_URL: HTTPS URL of the repo holding cli.sh; QSE_CLI_SUBDIR: directory in it with cli.sh
+ARG QSE_REPO_URL=https://github.com/ncee-dp-tech-sme/qsecli.git
+ARG QSE_CLI_SUBDIR=CLI
 ARG GO_VERSION=1.22.5
 ARG GRADLE_VERSION=8.8
 ARG NODEJS_MAJOR=20
@@ -49,10 +52,12 @@ RUN curl -fsSL "https://storage.googleapis.com/dart-archive/channels/stable/rele
     && dnf clean all && rm -rf /var/cache/dnf
 
 # Inject the token into the URL: https://<token>@<host/path>
-RUN auth_url=$(echo "${QSE_REPO_URL}" | sed "s|https://|https://${QSE_TOKEN}@|") \
+RUN --mount=type=secret,id=QSE_TOKEN \
+    auth_url=$(echo "${QSE_REPO_URL}" | sed "s|https://|https://$(cat /run/secrets/QSE_TOKEN)@|") \
     && git clone --depth=1 "${auth_url}" /tmp/qse-repo \
+    && test -f "/tmp/qse-repo/${QSE_CLI_SUBDIR}/cli.sh" \
     && mkdir -p /opt/qse \
-    && cp -r /tmp/qse-repo/CLI/. /opt/qse/ \
+    && cp -r "/tmp/qse-repo/${QSE_CLI_SUBDIR}/." /opt/qse/ \
     && chmod +x /opt/qse/*.sh \
     && rm -rf /tmp/qse-repo
 

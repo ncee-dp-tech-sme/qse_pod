@@ -5,6 +5,7 @@
 #   2026-08-21 - Initial creation
 #   2026-08-21 04:10:14 - Removed single-repo GIT_REPO_URL/APP_NAME; repos now in qse-pod-repos ConfigMap
 #   2026-08-21 10:00:00 - Added PY_MODULE_PATH; added venv to default EXCLUDE_PATHS
+#   2026-11-17 00:43:01 - Added GCM_UPLOAD_ENABLED (default "false"); GCM upload is optional
 # =============================================================================
 apiVersion: v1
 kind: ConfigMap
@@ -14,7 +15,12 @@ metadata:
   labels:
     app: qse-pod
 data:
-  # Guardium Cryptography Manager base URL (no trailing slash)
+  # Set to "true" to upload scan results to GCM (default "false" = scan only,
+  # results stay on the PVC). When "true", GCM_SERVER_URL and the
+  # GCM_BEARER_TOKEN secret key are required.
+  GCM_UPLOAD_ENABLED: "false"
+
+  # Guardium Cryptography Manager base URL (no trailing slash; only used when GCM_UPLOAD_ENABLED="true")
   GCM_SERVER_URL: "https://gcm.your-domain.com"
 
   # Default version label applied to all repos (leave empty to auto-detect from commit SHA)

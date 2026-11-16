@@ -1,0 +1,9 @@
+PROMPT: I want to change the behaviour and configuration in such a way the github repository where the cli.sh is stored is configurable.  In my case for example it is https://github.com/ncee-dp-tech-sme/qsecli in the CLI directory.  Start with the Docker and Container files and any other files required. Update the README.md and what needs updating also
+DATE: Tue Nov 17 00:13:28 2026
+
+Changes:
+- Dockerfile / Containerfile: default QSE_REPO_URL -> https://github.com/ncee-dp-tech-sme/qsecli.git; new build arg QSE_CLI_SUBDIR (default CLI); build fails if <subdir>/cli.sh missing; copy from ${QSE_CLI_SUBDIR} instead of hardcoded CLI.
+- README.md: prerequisites + "Building the Container Image" document both build args and updated examples.
+- AGENTS.md: build command note updated.
+Not changed: actionsworkflow.example (unrelated GitHub Actions sample). No runtime config changes (build-time only).
+Not built/tested: image build needs QSE_TOKEN.

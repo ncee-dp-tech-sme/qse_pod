@@ -6,16 +6,18 @@
 # Changes:
 #   2026-08-21 - Initial creation
 #   2026-08-21 - Made QSE CLI repo URL configurable via QSE_REPO_URL build arg
+#   2026-11-16 23:51:00 - Use BuildKit secret mount for QSE_TOKEN instead of build ARG
+#   2026-11-17 00:13:28 - Made QSE CLI repo default and sub-directory configurable (QSE_REPO_URL, QSE_CLI_SUBDIR)
 # =============================================================================
 
 FROM registry.access.redhat.com/ubi9/ubi AS builder
 
 # ---- Build-time arguments ----------------------------------------------------
-# QSE_TOKEN is used ONLY during build to clone the QSE CLI repo.
+# QSE_TOKEN is passed as a secret mount (--mount=type=secret,id=QSE_TOKEN) during build.
 # QSE_REPO_URL is the base HTTPS URL of the repo (without credentials).
-# Both are stripped from the final runtime layer via multi-stage build.
-ARG QSE_TOKEN
-ARG QSE_REPO_URL=https://github.ibm.com/quantum-safe-engineering/quantum-safe-read-repos.git
+# QSE_CLI_SUBDIR is the directory inside that repo that contains cli.sh.
+ARG QSE_REPO_URL=https://github.com/ncee-dp-tech-sme/qsecli.git
+ARG QSE_CLI_SUBDIR=CLI
 ARG GO_VERSION=1.22.5
 ARG GRADLE_VERSION=8.8
 ARG NODEJS_MAJOR=20
@@ -55,12 +57,14 @@ RUN curl -fsSL https://dl-ssl.google.com/linux/linux_signing_key.pub \
     && dnf install -y /tmp/dart.rpm && rm /tmp/dart.rpm \
     && dnf clean all && rm -rf /var/cache/dnf
 
-# ---- Clone QSE CLI (token used here, not copied to runtime layer) ------------
+# ---- Clone QSE CLI (token mounted as secret, not recorded in image layers) ---
 # Inject the token into the URL: https://<token>@<host/path>
-RUN auth_url=$(echo "${QSE_REPO_URL}" | sed "s|https://|https://${QSE_TOKEN}@|") \
+RUN --mount=type=secret,id=QSE_TOKEN \
+    auth_url=$(echo "${QSE_REPO_URL}" | sed "s|https://|https://$(cat /run/secrets/QSE_TOKEN)@|") \
     && git clone --depth=1 "${auth_url}" /tmp/qse-repo \
+    && test -f "/tmp/qse-repo/${QSE_CLI_SUBDIR}/cli.sh" \
     && mkdir -p /opt/qse \
-    && cp -r /tmp/qse-repo/CLI/. /opt/qse/ \
+    && cp -r "/tmp/qse-repo/${QSE_CLI_SUBDIR}/." /opt/qse/ \
     && chmod +x /opt/qse/*.sh \
     && rm -rf /tmp/qse-repo
 

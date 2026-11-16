@@ -83,11 +83,13 @@ spec:
 
               # ---- Sensitive env vars from Secret ----------------------------
               env:
+                # Only needed when GCM_UPLOAD_ENABLED="true" in the ConfigMap
                 - name: GCM_BEARER_TOKEN
                   valueFrom:
                     secretKeyRef:
                       name: qse-pod-secrets
                       key: GCM_BEARER_TOKEN
+                      optional: true
                 - name: GIT_USERNAME
                   valueFrom:
                     secretKeyRef:

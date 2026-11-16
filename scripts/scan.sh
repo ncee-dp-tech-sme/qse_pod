@@ -4,7 +4,8 @@
 #
 # Reads a list of Git repositories from a mounted ConfigMap file and runs a
 # Quantum Safe Explorer (QSE) cryptographic scan on each one in sequence.
-# Results are uploaded to Guardium Cryptography Manager (GCM) per repo.
+# Results are optionally uploaded to Guardium Cryptography Manager (GCM) per
+# repo (disabled by default; set GCM_UPLOAD_ENABLED=true to enable).
 #
 # All sensitive values are loaded from a .env file or injected as Kubernetes
 # Secret environment variables. No credentials are ever hardcoded.
@@ -14,8 +15,11 @@
 #                         Default: /etc/qse-repos/repos.yaml
 #   GIT_USERNAME        - Git username for private repos (optional)
 #   GIT_TOKEN           - Git personal access token (optional)
+#   GCM_UPLOAD_ENABLED  - "true" to upload results to GCM. Default: false
 #   GCM_SERVER_URL      - GCM base URL, e.g. https://gcm.example.com
+#                         (required only when GCM_UPLOAD_ENABLED=true)
 #   GCM_BEARER_TOKEN    - Bearer token for GCM API authentication
+#                         (required only when GCM_UPLOAD_ENABLED=true)
 #   APP_VERSION         - Version label override (default: commit short SHA)
 #   EXCLUDE_PATHS       - Default comma-separated paths to exclude (per-repo can override)
 #   PY_MODULE_PATH      - Optional path(s) for pip-installed or external Python modules
@@ -42,6 +46,7 @@
 #   2026-08-21 10:00:00 - Python scanning: add compile_python (pip install), -da flag, -py_module_path support
 #   2026-08-22 00:00:00 - Upload flow: discovery/analytics endpoints, Bearer token auth, repo URL as query param
 #   2026-08-22 00:00:00 - IFS scoping: replaced IFS+array[*] with printf -v to eliminate semgrep IFS-splitting finding
+#   2026-11-17 00:43:01 - GCM upload made optional via GCM_UPLOAD_ENABLED (default false)
 # =============================================================================
 
 set -euo pipefail
@@ -62,6 +67,7 @@ readonly REPOS_FILE="${REPOS_FILE:-/etc/qse-repos/repos.yaml}"
 readonly QSE_OUTPUT_BASE_DIR="${QSE_OUTPUT_BASE_DIR:-/opt/qse-pod/results/scans}"
 readonly LAST_COMMIT_BASE_DIR="${LAST_COMMIT_BASE_DIR:-/opt/qse-pod/results/commits}"
 readonly QSE_CLI="${QSE_HOME:-/opt/qse}/cli.sh"
+readonly GCM_UPLOAD_ENABLED="${GCM_UPLOAD_ENABLED:-false}"
 readonly MAX_RETRIES=3
 readonly RETRY_BASE_DELAY=5
 
@@ -97,7 +103,11 @@ confirm_execution() {
     echo "============================================================"
     echo "  Repos file    : ${REPOS_FILE}"
     echo "  Repositories  : ${repo_count} configured"
-    echo "  GCM server    : ${GCM_SERVER_URL:-<not set>}"
+    if [[ "${GCM_UPLOAD_ENABLED}" == "true" ]]; then
+        echo "  GCM upload    : enabled (${GCM_SERVER_URL:-<not set>})"
+    else
+        echo "  GCM upload    : disabled (set GCM_UPLOAD_ENABLED=true to enable)"
+    fi
     echo "  Results dir   : ${QSE_OUTPUT_BASE_DIR}"
     echo "  Commits dir   : ${LAST_COMMIT_BASE_DIR}"
     echo ""
@@ -107,7 +117,11 @@ confirm_execution() {
     echo "    3. Detect languages and pre-compile where required"
     echo "    4. Run QSE cryptographic scan"
     echo "    5. Clean up cloned repository from local filesystem"
-    echo "    6. Upload scan results to GCM via REST API"
+    if [[ "${GCM_UPLOAD_ENABLED}" == "true" ]]; then
+        echo "    6. Upload scan results to GCM via REST API"
+    else
+        echo "    6. (GCM upload disabled - results kept locally only)"
+    fi
     echo "    7. Save processed commit SHA to persistent storage"
     echo ""
     echo "  ⚠  Each cloned repository will be DELETED after its scan."
@@ -141,12 +155,14 @@ confirm_execution() {
 # ---- Validate required global env vars -- 2026-08-21 04:01:56 ---------------
 validate_env() {
     local missing=0
-    for var in GCM_SERVER_URL GCM_BEARER_TOKEN; do
-        if [[ -z "${!var:-}" ]]; then
-            error "Required environment variable '${var}' is not set."
-            missing=1
-        fi
-    done
+    if [[ "${GCM_UPLOAD_ENABLED}" == "true" ]]; then
+        for var in GCM_SERVER_URL GCM_BEARER_TOKEN; do
+            if [[ -z "${!var:-}" ]]; then
+                error "Required environment variable '${var}' is not set (GCM_UPLOAD_ENABLED=true)."
+                missing=1
+            fi
+        done
+    fi
     if [[ ! -f "${REPOS_FILE}" ]]; then
         error "Repos file not found: ${REPOS_FILE}"
         error "Mount the qse-pod-repos ConfigMap at /etc/qse-repos (see k8s/cronjob.yaml)."
@@ -733,15 +749,19 @@ scan_repo() {
         return 1
     fi
 
-    # Step 6 — check findings and upload
-    info "Step 6/7: Checking findings and uploading to GCM..."
+    # Step 6 — check findings and (optionally) upload
     check_critical_findings "${output_dir}"
-    upload_to_gcm "${output_dir}" "${repo_url}" || {
-        error "GCM upload failed for ${app_name}. SHA will NOT be saved."
-        return 1
-    }
+    if [[ "${GCM_UPLOAD_ENABLED}" == "true" ]]; then
+        info "Step 6/7: Uploading findings to GCM..."
+        upload_to_gcm "${output_dir}" "${repo_url}" || {
+            error "GCM upload failed for ${app_name}. SHA will NOT be saved."
+            return 1
+        }
+    else
+        info "Step 6/7: GCM upload disabled (GCM_UPLOAD_ENABLED=false). Results kept in ${output_dir}."
+    fi
 
-    # Step 7 — persist commit SHA only after successful upload
+    # Step 7 — persist commit SHA only after successful scan (and upload, if enabled)
     info "Step 7/7: Persisting processed commit SHA..."
     save_last_commit_sha "${remote_sha}" "${commit_file}" "${slug}"
 
