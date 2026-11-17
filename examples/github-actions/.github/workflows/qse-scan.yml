@@ -1,0 +1,458 @@
+# =============================================================================
+# qse-scan.yml - IBM Quantum Safe Explorer (QSE) scan on every push
+#
+# TEMPLATE: copy this file into the TARGET repository you want to scan, at
+#   <target-repo>/.github/workflows/qse-scan.yml
+# It is deliberately stored under examples/ in the qse_pod repository so that
+# it is NOT executed for qse_pod itself.
+#
+# What it does on every push:
+#   1. Validates configuration (fails fast, no secret values are printed)
+#   2. Fetches the QSE CLI (cli.sh) from a PRIVATE repository using a token
+#      passed through git's environment config (never in a URL / argv / disk)
+#   3. Detects languages, pre-compiles Java/Go/Python best-effort
+#   4. Runs the QSE scan with output in <repo-root>/qs_explorer_result
+#   5. Commits qs_explorer_result back to the branch so results are available
+#      after a local `git pull`
+#   6. OPTIONALLY uploads the findings to Guardium Cryptography Manager (GCM)
+#
+# -----------------------------------------------------------------------------
+# REQUIRED CONFIGURATION  (Settings > Secrets and variables > Actions)
+# -----------------------------------------------------------------------------
+# SECRETS
+#   QSE_TOKEN          REQUIRED. PAT with read access to the private repo that
+#                      holds cli.sh (classic: `repo`; fine-grained: Contents
+#                      "Read-only" on that single repo).
+#   GCM_BEARER_TOKEN   Only when GCM upload is enabled. GCM API bearer token.
+#
+# VARIABLES (all optional unless noted)
+#   QSE_REPO_URL       HTTPS URL of the private repo with the QSE CLI.
+#                      Default: https://github.com/ncee-dp-tech-sme/qsecli.git
+#   QSE_CLI_SUBDIR     Directory inside that repo containing cli.sh.
+#                      Default: CLI
+#   QSE_CLI_REF        Branch or tag of the QSE CLI repo to use. Default: the
+#                      repo's default branch. Pin a tag for reproducible scans.
+#   QSE_GIT_USERNAME   Username paired with QSE_TOKEN. Default: x-access-token
+#   QSE_APP_NAME       Application label (-app). Default: repository name
+#   APP_VERSION        Version label (-app_ver). Default: short commit SHA
+#   EXCLUDE_PATHS      Comma-separated paths passed to -ef.
+#                      Default: src/test,vendor,node_modules
+#                      (.git, .qse-venv and qs_explorer_result are always added)
+#   QSE_LANGUAGES      Override language detection, e.g. ".java,.py"
+#   PY_MODULE_PATH     Passed as -py_module_path when set (Python scans)
+#   QSE_JAVA_VERSION   JDK for the QSE CLI and Java builds. Default: 17
+#   GCM_UPLOAD_ENABLED "true" to upload to GCM. Default: false (OFF).
+#                      May alternatively be set as a SECRET of the same name.
+#   GCM_SERVER_URL     GCM base URL (https://...). Required when upload is on.
+#                      May alternatively be set as a SECRET of the same name.
+#
+# REPOSITORY SETTINGS
+#   Settings > Actions > General > Workflow permissions must allow the
+#   workflow to push (this file requests `contents: write` itself, but an
+#   org policy of "read-only" overrides it). If the branch is protected, allow
+#   github-actions[bot] to bypass the protection, otherwise the commit step
+#   fails (results are still available as a workflow artifact).
+#
+# NOTES
+#   - Results committed to the repo are visible to everyone with read access
+#     to it. Do not use this on public repos if findings are sensitive.
+#   - Loop prevention: paths-ignore on qs_explorer_result/**, `[skip ci]` in
+#     the commit message, and GITHUB_TOKEN pushes never trigger new runs.
+#   - C/C++, C# and Dart are scanned from source (no pre-build in this
+#     workflow); add build steps before "Run QSE scan" if you need them.
+#   - Actions are pinned to major tags; pin to commit SHAs for stricter
+#     supply-chain control.
+#
+# Changes:
+#   2026-11-17 01:13:40 - Initial creation (template, not active in qse_pod)
+# =============================================================================
+
+name: QSE Scan
+
+on:
+  push:
+    branches: ['**']
+    paths-ignore:
+      - 'qs_explorer_result/**'
+  workflow_dispatch:
+
+# Least privilege: contents:write is needed only to commit the results.
+permissions:
+  contents: write
+
+# One run per ref at a time so result commits cannot race each other.
+concurrency:
+  group: qse-scan-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  OUT_DIR: qs_explorer_result
+  QSE_REPO_URL: ${{ vars.QSE_REPO_URL || 'https://github.com/ncee-dp-tech-sme/qsecli.git' }}
+  QSE_CLI_SUBDIR: ${{ vars.QSE_CLI_SUBDIR || 'CLI' }}
+  QSE_CLI_REF: ${{ vars.QSE_CLI_REF }}
+  QSE_GIT_USERNAME: ${{ vars.QSE_GIT_USERNAME || 'x-access-token' }}
+  QSE_APP_NAME: ${{ vars.QSE_APP_NAME || github.event.repository.name }}
+  APP_VERSION: ${{ vars.APP_VERSION }}
+  EXCLUDE_PATHS: ${{ vars.EXCLUDE_PATHS || 'src/test,vendor,node_modules' }}
+  QSE_LANGUAGES: ${{ vars.QSE_LANGUAGES }}
+  PY_MODULE_PATH: ${{ vars.PY_MODULE_PATH }}
+
+jobs:
+  qse-scan:
+    name: Quantum Safe Explorer scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # ---- Fail fast on missing/invalid configuration; never echoes secrets --
+      - name: Validate configuration
+        env:
+          QSE_TOKEN: ${{ secrets.QSE_TOKEN }}
+          GCM_UPLOAD_ENABLED_RAW: ${{ vars.GCM_UPLOAD_ENABLED || secrets.GCM_UPLOAD_ENABLED || 'false' }}
+          GCM_SERVER_URL: ${{ vars.GCM_SERVER_URL || secrets.GCM_SERVER_URL }}
+          GCM_BEARER_TOKEN: ${{ secrets.GCM_BEARER_TOKEN }}
+        run: |
+          missing=0
+          if [[ -z "${QSE_TOKEN}" ]]; then
+            echo "::error title=Missing secret::Secret QSE_TOKEN is not set (needed to read the private QSE CLI repo)."
+            missing=1
+          fi
+          if [[ "${QSE_REPO_URL}" != https://* ]]; then
+            echo "::error title=Invalid variable::QSE_REPO_URL must start with https://"
+            missing=1
+          fi
+
+          gcm_enabled="$(printf '%s' "${GCM_UPLOAD_ENABLED_RAW}" | tr '[:upper:]' '[:lower:]')"
+          if [[ "${gcm_enabled}" == "true" ]]; then
+            if [[ -z "${GCM_SERVER_URL}" || "${GCM_SERVER_URL}" != https://* ]]; then
+              echo "::error title=GCM config::GCM_UPLOAD_ENABLED=true requires GCM_SERVER_URL starting with https://"
+              missing=1
+            fi
+            if [[ -z "${GCM_BEARER_TOKEN}" ]]; then
+              echo "::error title=GCM config::GCM_UPLOAD_ENABLED=true requires secret GCM_BEARER_TOKEN"
+              missing=1
+            fi
+          else
+            gcm_enabled=false
+          fi
+
+          if [[ "${missing}" -ne 0 ]]; then
+            echo "::error::Configuration invalid - aborting. See the header of qse-scan.yml."
+            exit 1
+          fi
+
+          echo "GCM_ENABLED=${gcm_enabled}" >> "${GITHUB_ENV}"
+          echo "Configuration OK. GCM upload: ${gcm_enabled}. QSE CLI repo: ${QSE_REPO_URL} (subdir: ${QSE_CLI_SUBDIR}, ref: ${QSE_CLI_REF:-<default>})"
+
+      - name: Set up JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: ${{ vars.QSE_JAVA_VERSION || '17' }}
+
+      # ---- Clone private QSE CLI repo; token only via env-based git config ---
+      - name: Fetch QSE CLI from private repository
+        env:
+          QSE_TOKEN: ${{ secrets.QSE_TOKEN }}
+        run: |
+          host="${QSE_REPO_URL#https://}"; host="${host%%/*}"
+          basic="$(printf '%s:%s' "${QSE_GIT_USERNAME}" "${QSE_TOKEN}" | base64 | tr -d '\n')"
+          echo "::add-mask::${basic}"
+
+          # Credentials live only in this process environment (GIT_CONFIG_*),
+          # not in the URL, argv, .git/config or any file.
+          export GIT_TERMINAL_PROMPT=0
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0="http.https://${host}/.extraheader"
+          export GIT_CONFIG_VALUE_0="Authorization: Basic ${basic}"
+
+          src="${RUNNER_TEMP}/qse-cli-src"
+          rm -rf "${src}"
+          args=(--depth 1)
+          [[ -n "${QSE_CLI_REF}" ]] && args+=(--branch "${QSE_CLI_REF}")
+
+          if ! git clone "${args[@]}" --quiet "${QSE_REPO_URL}" "${src}" 2>/dev/null; then
+            echo "::error title=QSE CLI clone failed::Could not clone ${QSE_REPO_URL}. Check QSE_TOKEN scope/expiry, QSE_REPO_URL and QSE_CLI_REF."
+            exit 1
+          fi
+
+          if [[ ! -f "${src}/${QSE_CLI_SUBDIR}/cli.sh" ]]; then
+            echo "::error title=cli.sh not found::${QSE_CLI_SUBDIR}/cli.sh does not exist in ${QSE_REPO_URL}. Check QSE_CLI_SUBDIR."
+            exit 1
+          fi
+
+          # Keep the CLI outside the workspace so it is never scanned/committed
+          rm -rf "${RUNNER_TEMP}/qse"
+          mkdir -p "${RUNNER_TEMP}/qse"
+          cp -r "${src}/${QSE_CLI_SUBDIR}/." "${RUNNER_TEMP}/qse/"
+          rm -rf "${src}"
+          chmod +x "${RUNNER_TEMP}/qse/"*.sh
+          echo "QSE_HOME=${RUNNER_TEMP}/qse" >> "${GITHUB_ENV}"
+          echo "QSE CLI installed to ${RUNNER_TEMP}/qse"
+
+      # ---- Detect languages; pre-compile best-effort (warn, never abort) -----
+      - name: Detect languages and pre-compile
+        run: |
+          has_files() {
+            local hit
+            hit="$(find . \( -path ./.git -o -path ./node_modules -o -path "./${OUT_DIR}" -o -path ./.qse-venv \) \
+                   -prune -o \( "$@" \) -print -quit)"
+            [[ -n "${hit}" ]]
+          }
+
+          langs=()
+          has_files -name '*.java' -o -name pom.xml -o -name build.gradle -o -name build.gradle.kts && langs+=(.java)
+          has_files -name '*.go' -o -name go.mod                                                   && langs+=(.go)
+          has_files -name '*.py' -o -name requirements.txt -o -name pyproject.toml -o -name setup.py && langs+=(.py)
+          has_files -name '*.cpp' -o -name '*.cc' -o -name '*.cxx' -o -name CMakeLists.txt -o -name Makefile && langs+=(.cpp)
+          has_files -name '*.cs' -o -name '*.csproj' -o -name '*.sln'                              && langs+=(.cs)
+          has_files -name '*.dart' -o -name pubspec.yaml                                           && langs+=(.dart)
+
+          if [[ -n "${QSE_LANGUAGES}" ]]; then
+            lang_flag="${QSE_LANGUAGES}"
+            echo "Using QSE_LANGUAGES override: ${lang_flag}"
+          else
+            if [[ "${#langs[@]}" -eq 0 ]]; then
+              echo "::warning::No recognised languages detected - falling back to all supported extensions."
+              langs=(.java .go .py .cpp .cs .dart)
+            fi
+            printf -v lang_flag '%s,' "${langs[@]}"
+            lang_flag="${lang_flag%,}"
+          fi
+          echo "QSE_LANG_FLAG=${lang_flag}" >> "${GITHUB_ENV}"
+          echo "Languages to scan: ${lang_flag}"
+
+          if [[ ",${lang_flag}," == *",.java,"* ]]; then
+            echo "::group::Java pre-compilation"
+            if [[ -f pom.xml ]]; then
+              mvn -B -q clean install dependency:copy-dependencies -DskipTests \
+                || echo "::warning::Maven build failed - QSE will scan with whatever was produced."
+            elif [[ -f build.gradle || -f build.gradle.kts ]]; then
+              gradle_cmd=gradle; [[ -x ./gradlew ]] && gradle_cmd=./gradlew
+              "${gradle_cmd}" build -x test --no-daemon --quiet \
+                || echo "::warning::Gradle build failed - QSE will scan with whatever was produced."
+            else
+              mkdir -p target/classes
+              find . -name '*.java' -not -path './.git/*' -print0 \
+                | xargs -0 javac -d target/classes 2>/dev/null \
+                || echo "::warning::javac reported errors - partial class files may exist."
+            fi
+            echo "::endgroup::"
+          fi
+
+          if [[ ",${lang_flag}," == *",.go,"* && -f go.mod ]]; then
+            echo "::group::Go pre-compilation"
+            go build ./... || echo "::warning::go build failed - QSE will scan source directly."
+            echo "::endgroup::"
+          fi
+
+          if [[ ",${lang_flag}," == *",.py,"* ]]; then
+            echo "::group::Python dependency installation"
+            if python3 -m venv .qse-venv; then
+              [[ -f requirements.txt ]] && { .qse-venv/bin/pip install --quiet -r requirements.txt \
+                || echo "::warning::pip install -r requirements.txt had errors."; }
+              if [[ -f pyproject.toml || -f setup.py ]]; then
+                .qse-venv/bin/pip install --quiet -e . || echo "::warning::pip install -e . had errors."
+              fi
+            else
+              echo "::warning::Could not create Python venv - skipping pip install."
+            fi
+            echo "::endgroup::"
+          fi
+
+      # ---- Run the scan; output goes to <repo-root>/qs_explorer_result -------
+      - name: Run QSE scan
+        id: scan
+        run: |
+          out="${GITHUB_WORKSPACE}/${OUT_DIR}"
+          app_version="${APP_VERSION:-$(git rev-parse --short HEAD)}"
+          exclude="${EXCLUDE_PATHS:+${EXCLUDE_PATHS},}.git,.qse-venv,${OUT_DIR}"
+
+          # Remove results of the previous scan so stale files do not linger.
+          # If the scan fails they stay in git because nothing is committed.
+          rm -rf "${out}"
+          mkdir -p "${out}"
+
+          cli_args=(
+            -i "${GITHUB_WORKSPACE}"
+            -l "${QSE_LANG_FLAG}"
+            -o "${out}"
+            -app "${QSE_APP_NAME}"
+            -app_ver "${app_version}"
+            -ef "${exclude}"
+            -log
+          )
+
+          if [[ ",${QSE_LANG_FLAG}," == *",.py,"* ]]; then
+            cli_args+=(-da)
+            [[ -n "${PY_MODULE_PATH}" ]] && cli_args+=(-py_module_path "${PY_MODULE_PATH}")
+          fi
+
+          if [[ ",${QSE_LANG_FLAG}," == *",.java,"* ]]; then
+            cf_parts=()
+            for d in target/classes target/dependency build/classes build/libs; do
+              [[ -d "${GITHUB_WORKSPACE}/${d}" ]] && cf_parts+=("${GITHUB_WORKSPACE}/${d}")
+            done
+            if [[ "${#cf_parts[@]}" -gt 0 ]]; then
+              printf -v cf '%s;' "${cf_parts[@]}"
+              [[ " ${cli_args[*]} " == *" -da "* ]] || cli_args+=(-da)
+              cli_args+=(-cf "${cf%;}")
+            fi
+          fi
+
+          [[ ",${QSE_LANG_FLAG}," == *",.dart,"* ]] && cli_args+=(-em true)
+
+          echo "Executing: cli.sh ${cli_args[*]}"
+          cd "${QSE_HOME}"
+          if ! ./cli.sh "${cli_args[@]}"; then
+            echo "::error title=QSE scan failed::cli.sh exited with a non-zero status. See the log above."
+            exit 1
+          fi
+
+          if [[ -z "$(find "${out}" -type f -print -quit)" ]]; then
+            echo "::error title=No results::QSE finished but produced no files in ${OUT_DIR}."
+            exit 1
+          fi
+          echo "QSE scan completed. Results: ${OUT_DIR}/"
+          ls -1 "${out}"
+
+      - name: Check for weak-algorithm findings (informational)
+        run: |
+          if grep -rlE 'MD5|SHA-1|DES|RC4|RSA-1024' --include='*.json' "${OUT_DIR}" >/dev/null 2>&1; then
+            echo "::warning title=Weak cryptography::Findings mention MD5/SHA-1/DES/RC4/RSA-1024. Review ${OUT_DIR}/."
+          else
+            echo "No weak-algorithm keywords found in findings."
+          fi
+
+      # ---- Persist results in version control (retries on push races) --------
+      - name: Commit results to repository
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" != "branch" ]]; then
+            echo "::warning::Ref ${GITHUB_REF} is not a branch - skipping commit (results remain in the workflow artifact)."
+            exit 0
+          fi
+          branch="${GITHUB_REF_NAME}"
+          short_sha="$(git rev-parse --short HEAD)"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          saved="${RUNNER_TEMP}/qse-results-saved"
+          rm -rf "${saved}"; cp -a "${OUT_DIR}" "${saved}"
+
+          for attempt in 1 2 3; do
+            git add -f -A -- "${OUT_DIR}"
+            if git diff --cached --quiet; then
+              echo "No changes in ${OUT_DIR}/ - nothing to commit."
+              exit 0
+            fi
+            git commit --quiet -m "chore(qse): update Quantum Safe Explorer results for ${short_sha} [skip ci]"
+
+            if git push origin "HEAD:refs/heads/${branch}"; then
+              echo "Results pushed to ${branch} (attempt ${attempt})."
+              exit 0
+            fi
+
+            echo "::warning::Push attempt ${attempt}/3 failed - rebuilding commit on latest ${branch}."
+            sleep $(( attempt * 5 ))
+            git reset --hard --quiet HEAD~1
+            if git fetch --depth 1 origin "${branch}"; then
+              git reset --hard --quiet FETCH_HEAD
+            fi
+            rm -rf "${OUT_DIR}"; cp -a "${saved}" "${OUT_DIR}"
+          done
+
+          echo "::error title=Push failed::Could not push ${OUT_DIR}/ to ${branch}. Check branch protection (allow github-actions[bot]) and Settings > Actions > Workflow permissions."
+          exit 1
+
+      # ---- Optional GCM upload (GCM_UPLOAD_ENABLED=true) ---------------------
+      - name: Upload findings to GCM
+        if: env.GCM_ENABLED == 'true'
+        env:
+          GCM_SERVER_URL: ${{ vars.GCM_SERVER_URL || secrets.GCM_SERVER_URL }}
+          GCM_BEARER_TOKEN: ${{ secrets.GCM_BEARER_TOKEN }}
+        run: |
+          umask 077
+          hdr="$(mktemp)"; trap 'rm -f "${hdr}"' EXIT
+          printf 'Authorization: Bearer %s\ntoken_type: api_key\n' "${GCM_BEARER_TOKEN}" > "${hdr}"
+
+          base="${GCM_SERVER_URL%/}/ibm/pv/api/v1/upload-qse-findings"
+          repo_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
+          enc="$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "${repo_url}")"
+
+          # Retry 5xx / curl errors with 5s,10s,20s backoff; never retry 4xx
+          post_file() {
+            local endpoint="$1" file="$2" attempt=0 delay=5 code rc resp
+            resp="$(mktemp)"
+            while [[ "${attempt}" -lt 3 ]]; do
+              attempt=$(( attempt + 1 ))
+              echo "POST ${endpoint%%\?*} <- ${file} (attempt ${attempt}/3)"
+              rc=0
+              code="$(curl --silent --show-error --max-time 120 --output "${resp}" \
+                --write-out '%{http_code}' -X POST "${endpoint}" \
+                -H 'accept: application/json' -H "@${hdr}" \
+                -F "file=@${file};type=application/json")" || rc=$?
+              if [[ "${rc}" -ne 0 ]]; then
+                echo "::warning::curl error ${rc} on attempt ${attempt}."
+              elif [[ "${code}" =~ ^2 ]]; then
+                echo "GCM upload successful (HTTP ${code})."; rm -f "${resp}"; return 0
+              elif [[ "${code}" =~ ^4 ]]; then
+                echo "::error title=GCM client error::HTTP ${code}: $(head -c 500 "${resp}")"
+                rm -f "${resp}"; return 1
+              else
+                echo "::warning::GCM returned HTTP ${code}."
+              fi
+              if [[ "${attempt}" -lt 3 ]]; then sleep "${delay}"; delay=$(( delay * 2 )); fi
+            done
+            echo "::error title=GCM upload failed::Failed after 3 attempts."
+            rm -f "${resp}"; return 1
+          }
+
+          uploaded=0
+          discovery="${OUT_DIR}/quantum_safe_api_discovery_findings.json"
+          if [[ -f "${discovery}" ]]; then
+            post_file "${base}/discovery?repositoryUrl=${enc}" "${discovery}"
+            uploaded=$(( uploaded + 1 ))
+          fi
+          analytics="$(find "${OUT_DIR}" -maxdepth 1 -name 'quantum_safe_cryptography_analysis_findings_*.json' -print -quit)"
+          if [[ -n "${analytics}" ]]; then
+            post_file "${base}/analytics?repositoryUrl=${enc}" "${analytics}"
+            uploaded=$(( uploaded + 1 ))
+          fi
+          if [[ "${uploaded}" -eq 0 ]]; then
+            echo "::error title=GCM upload::No recognised findings files in ${OUT_DIR}/."
+            exit 1
+          fi
+          echo "GCM upload complete - ${uploaded} file(s)."
+
+      # ---- Always: fallback artifact + summary; remove CLI from runner -------
+      - name: Upload results as workflow artifact (fallback)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: qse-scan-results-${{ github.sha }}
+          path: qs_explorer_result/
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Job summary and cleanup
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+          GCM_ON: ${{ env.GCM_ENABLED }}
+        run: |
+          {
+            echo "### QSE scan"
+            echo "- Status: **${JOB_STATUS}**"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Results directory: \`${OUT_DIR}/\`"
+            echo "- GCM upload: ${GCM_ON:-not evaluated}"
+          } >> "${GITHUB_STEP_SUMMARY}"
+          rm -rf "${RUNNER_TEMP}/qse" "${RUNNER_TEMP}/qse-cli-src" "${RUNNER_TEMP}/qse-results-saved"

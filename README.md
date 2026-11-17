@@ -18,7 +18,9 @@ A containerised, scheduled workload that runs IBM's **Quantum Safe Explorer (QSE
 10. [Monitoring and Troubleshooting](#monitoring-and-troubleshooting)
 11. [QSE Flag Reference and Rationale](#qse-flag-reference-and-rationale)
 12. [GCM API Reference](#gcm-api-reference)
-13. [Security Design](#security-design)
+13. [GitHub Actions Workflow (Template)](#github-actions-workflow-template)
+14. [Configuring the Workflow from a File (Script)](#configuring-the-workflow-from-a-file-script)
+15. [Security Design](#security-design)
 
 ---
 
@@ -188,6 +190,12 @@ All repositories share the same `GIT_TOKEN` / `GIT_USERNAME` from the `qse-pod-s
 ├── env.example           # Template for local .env configuration
 ├── scripts/
 │   └── scan.sh           # Main scan orchestration script (loops over all repos)
+├── examples/
+│   └── github-actions/
+│       ├── .github/workflows/qse-scan.yml  # GitHub Actions template (NOT active here)
+│       ├── setup-github-config.sh          # Sets the workflow's secrets/variables from a file
+│       ├── qse-github.env.example          # Input template for the script
+│       └── README.md                       # Documentation for the script
 └── k8s/
     ├── secret.yaml        # Secret template (fill in before applying)
     ├── configmap.yaml     # Global non-sensitive configuration
@@ -737,6 +745,127 @@ curl -X POST \
 ### Retry behaviour
 
 Transient server errors (HTTP 5xx) and curl errors are retried up to **3 times** with exponential backoff (5 s → 10 s → 20 s). Client errors (HTTP 4xx) fail immediately without retry.
+
+---
+
+## GitHub Actions Workflow (Template)
+
+[`examples/github-actions/.github/workflows/qse-scan.yml`](examples/github-actions/.github/workflows/qse-scan.yml) is a ready-to-use GitHub Actions workflow that runs a QSE scan on **every push** of the repository it is installed in, commits the results back to the branch and optionally uploads them to GCM.
+
+> **This workflow is a template and is intentionally NOT active in this repository.** GitHub only runs workflows located in `.github/workflows/` at the repository root, and the template lives under `examples/`. Copy it into the repository you want to scan.
+
+### How it works
+
+```
+push ──► validate config ──► fetch cli.sh from private repo (QSE_TOKEN)
+     ──► detect languages + pre-compile ──► QSE scan ──► qs_explorer_result/
+     ──► commit + push results to the branch ──► (optional) upload to GCM
+```
+
+| Aspect | Behaviour |
+|---|---|
+| Trigger | `push` on every branch, plus manual `workflow_dispatch`. Pushes that only touch `qs_explorer_result/**` are ignored |
+| Output directory | `qs_explorer_result/` in the repository root (passed as `-o`). It is cleared before each scan so stale files do not linger |
+| Persistence | The directory is committed as `github-actions[bot]` with `[skip ci]` in the message, so `git pull` brings the latest results to your machine. A copy is also uploaded as a workflow artifact (30 days) as a fallback |
+| Loop prevention | `paths-ignore`, `[skip ci]`, and `GITHUB_TOKEN` pushes never trigger new runs. A `concurrency` group serialises runs per branch; a rejected push is retried up to 3 times on top of the latest remote commit |
+| Private CLI access | `QSE_TOKEN` is passed to `git` through `GIT_CONFIG_*` environment variables (HTTP auth header scoped to the CLI repo host). It is never written into a URL, command line, file or `.git/config`, and the derived header is masked in the log |
+| GCM upload | **Off by default.** Enabled with `GCM_UPLOAD_ENABLED=true`. Runs *after* the results are committed, so a GCM outage never loses results (the job still fails so you notice) |
+| Error handling | Fail-fast configuration validation with `::error::` annotations, best-effort pre-compilation (`::warning::`), non-zero CLI exit and empty-result detection fail the job, GCM 5xx retried (5/10/20 s), 4xx not retried, job summary written, CLI removed from the runner at the end |
+| Permissions | `contents: write` only (needed for the results commit) |
+
+### Installation
+
+1. Copy the file into the repository you want to scan:
+
+   ```bash
+   mkdir -p <target-repo>/.github/workflows
+   cp examples/github-actions/.github/workflows/qse-scan.yml <target-repo>/.github/workflows/qse-scan.yml
+   ```
+
+2. Configure the secrets and variables below under **Settings → Secrets and variables → Actions**, or load them from a file with the [setup script](#configuring-the-workflow-from-a-file-script).
+3. Allow the workflow to push: **Settings → Actions → General → Workflow permissions** must be *Read and write*. If the branch is protected, allow `github-actions[bot]` to bypass the protection (otherwise the commit step fails; the results remain available as an artifact).
+4. Push a commit. The first run appears under the **Actions** tab, and `qs_explorer_result/` is committed when it succeeds.
+
+### Secrets (Settings → Secrets and variables → Actions → *Secrets*)
+
+| Name | Required | Description |
+|---|---|---|
+| `QSE_TOKEN` | **Yes** | PAT used to clone the private repository that holds `cli.sh`. Fine-grained: *Contents: Read-only* on that single repository (preferred). Classic: `repo` scope. Authorise SSO if your organisation requires it. See [Setting Up a Private GitHub Repository for the QSE CLI](#setting-up-a-private-github-repository-for-the-qse-cli) |
+| `GCM_BEARER_TOKEN` | Only if GCM upload is enabled | GCM bearer token (sent as `Authorization: Bearer` plus `token_type: api_key`) |
+| `GCM_UPLOAD_ENABLED` | No | Alternative to the variable of the same name. `true` enables GCM upload |
+| `GCM_SERVER_URL` | No | Alternative to the variable of the same name, if you prefer to keep the GCM URL secret |
+
+### Variables (Settings → Secrets and variables → Actions → *Variables*)
+
+| Name | Required | Default | Description |
+|---|---|---|---|
+| `GCM_UPLOAD_ENABLED` | No | `false` | Set to `true` to upload findings to GCM. A variable takes precedence over the secret of the same name |
+| `GCM_SERVER_URL` | If upload enabled | — | GCM base URL; must start with `https://` |
+| `QSE_REPO_URL` | No | `https://github.com/ncee-dp-tech-sme/qsecli.git` | HTTPS URL of the private QSE CLI repository (GitHub Enterprise hosts work too) |
+| `QSE_CLI_SUBDIR` | No | `CLI` | Directory in that repository containing `cli.sh` (`.` for the root) |
+| `QSE_CLI_REF` | No | repo default branch | Branch or tag of the CLI repository; pin a tag for reproducible scans |
+| `QSE_GIT_USERNAME` | No | `x-access-token` | Username paired with `QSE_TOKEN` |
+| `QSE_APP_NAME` | No | repository name | Passed as `-app` |
+| `APP_VERSION` | No | short commit SHA | Passed as `-app_ver` |
+| `EXCLUDE_PATHS` | No | `src/test,vendor,node_modules` | Passed as `-ef`. `.git`, `.qse-venv` and `qs_explorer_result` are always appended |
+| `QSE_LANGUAGES` | No | auto-detected | Override detection, for example `.java,.py` |
+| `PY_MODULE_PATH` | No | — | Passed as `-py_module_path` for Python scans |
+| `QSE_JAVA_VERSION` | No | `17` | Temurin JDK used for the QSE CLI and Java builds |
+
+### Enabling or disabling the GCM upload
+
+```
+GCM upload OFF (default):  do nothing, or set variable GCM_UPLOAD_ENABLED=false
+GCM upload ON:             set variable GCM_UPLOAD_ENABLED=true
+                           + variable GCM_SERVER_URL=https://gcm.your-domain.com
+                           + secret   GCM_BEARER_TOKEN=<token>
+```
+
+The upload uses the same endpoints, headers and retry rules as the pod (see [GCM API Reference](#gcm-api-reference)); the repository URL sent to GCM is `<GITHUB_SERVER_URL>/<owner>/<repo>`.
+
+### Notes and limitations
+
+- **Results are visible to everyone with read access to the repository.** Do not enable the commit on public repositories if the findings are sensitive.
+- Java (Maven/Gradle/`javac`), Go and Python (pip into `.qse-venv`) are prepared automatically. C/C++, C# and Dart are scanned from source; add your own build steps before the *Run QSE scan* step if you need compiled artefacts.
+- Actions are pinned to major version tags. For stricter supply-chain control, pin them to commit SHAs.
+- A push to a branch makes the commit step push a second commit to that same branch. Locally, run `git pull` before your next push to avoid a non-fast-forward rejection.
+
+### Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `Secret QSE_TOKEN is not set` | Secret missing, or defined only in another repository/environment | Add the secret to this repository |
+| `QSE CLI clone failed` | Token expired, no access to the CLI repo, SSO not authorised, wrong `QSE_REPO_URL`/`QSE_CLI_REF` | Check token scope and expiry |
+| `cli.sh not found` | Wrong `QSE_CLI_SUBDIR` | Set it to the directory that contains `cli.sh` |
+| `Push failed` | Branch protection or read-only workflow permissions | Allow `github-actions[bot]` to push, or set permissions to *Read and write* |
+| Workflow runs in a loop | Results directory was changed from `qs_explorer_result` | Keep the default name (also used in `paths-ignore`) |
+| `GCM client error HTTP 401/403` | Wrong or expired `GCM_BEARER_TOKEN` | Rotate the secret |
+
+---
+
+## Configuring the Workflow from a File (Script)
+
+Instead of entering every secret and variable by hand under **Settings → Secrets and variables → Actions**, use [`examples/github-actions/setup-github-config.sh`](examples/github-actions/setup-github-config.sh). It reads a local `KEY=VALUE` file and sets all secrets and variables that [`qse-scan.yml`](examples/github-actions/.github/workflows/qse-scan.yml) uses, through the GitHub CLI. Run it in the repository that **uses** the workflow, not in this one.
+
+```bash
+# In the repository that uses the workflow (gh must be logged in: gh auth login)
+cp <qse_pod>/examples/github-actions/setup-github-config.sh .
+cp <qse_pod>/examples/github-actions/qse-github.env.example .qse-github.env
+chmod 600 .qse-github.env && $EDITOR .qse-github.env    # at minimum: QSE_TOKEN
+
+./setup-github-config.sh --dry-run      # validate and preview, nothing is sent
+./setup-github-config.sh                # apply, then verify every name exists
+./setup-github-config.sh --remove       # rollback: delete the items listed in the file
+```
+
+| Aspect | Behaviour |
+|---|---|
+| Classification | `QSE_TOKEN` and `GCM_BEARER_TOKEN` become **secrets**; all other known keys become **variables**; unknown keys are skipped with a warning |
+| Validation | Same rules as the workflow: `QSE_TOKEN` required (or already present in the repo), `https://` URLs, `GCM_UPLOAD_ENABLED` is `true`/`false`, and `true` requires `GCM_SERVER_URL` and `GCM_BEARER_TOKEN`. Placeholder values abort the run |
+| Secret handling | Values are piped to `gh` on stdin, never placed on a command line and never logged. The input file is parsed, not sourced, is checked for `600` permissions and is added to `.gitignore` if it is not ignored |
+| Safety | Summary and confirmation prompt (`always` stores an allow entry per repository; skipped with `--yes`, `ALWAYS_ALLOW=true` or a non-interactive session), `--dry-run`, post-apply verification, and `--remove` as rollback |
+
+Full documentation, the key reference, options and troubleshooting: [`examples/github-actions/README.md`](examples/github-actions/README.md).
 
 ---
 

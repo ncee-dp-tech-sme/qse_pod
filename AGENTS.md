@@ -14,6 +14,7 @@ Bash + Kubernetes manifests only (no package manager, no test suite, no linter c
 - Manual scan: `kubectl create job --from=cronjob/qse-pod-scan manual-scan-$(date +%s) -n qse-pod`
 
 ## Non-obvious gotchas
+- `examples/github-actions/.github/workflows/qse-scan.yml` is a copy-into-another-repo template and must NOT be moved to this repo's `.github/workflows/` (it would scan and commit into qse_pod). Keep its variables in sync with the README "GitHub Actions Workflow (Template)" section and with the key lists (`SECRET_KEYS`/`VARIABLE_KEYS`) in `examples/github-actions/setup-github-config.sh` and `qse-github.env.example`.
 - `Dockerfile` and `Containerfile` are meant to be identical; the Containerfile is a mirrored copy, not a symlink. Edit both.
 - `parse_repos_file` is a regex/grep parser, NOT a YAML parser (no yq/python in the runtime path). Only `- url:`, `app_name:`, `exclude_paths:` lines at any indent are recognized; trailing `# comments` are stripped. Do not introduce new YAML structure (multi-line values, anchors, nested keys) in `k8s/repos-configmap.yaml` without extending the parser.
 - `repo_slug` only strips a `github*/` host prefix; non-GitHub URLs produce ugly/colliding slugs (slug is used for results dir, `<slug>.sha`, and ConfigMap key `<slug>_last_sha`).

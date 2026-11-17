@@ -1,0 +1,10 @@
+PROMPT: Can you create an script that will programmatically set the required GitHub Actions secrets and variables and loads all secrets and variables from a file. It should be used in a repo that will use the github action.  Add it to the README and create a separate README for this new functionality
+DATE: Tue 17 Nov 2026 01:31:28 CET
+
+Changes:
+- examples/github-actions/setup-github-config.sh (new): gh-based script; parses (never sources) a KEY=VALUE file; QSE_TOKEN/GCM_BEARER_TOKEN -> secrets, other workflow keys -> variables, unknown keys skipped; validates like the workflow (https URLs, GCM consistency, placeholder rejection, QSE_TOKEN or existing secret); values piped via stdin only; confirmation (+per-repo always-allow in ~/.config/qse-github-setup/always_allow, --yes, ALWAYS_ALLOW, non-TTY skip); --dry-run; --remove (rollback); post-apply verify; chmod/.gitignore protection of the input file; LOG_LEVEL; bash 3.2 compatible.
+- examples/github-actions/qse-github.env.example (new): input template, secrets marked HashiCorpIgnore.
+- examples/github-actions/README.md (new): separate documentation (prereqs, quick start, format, key table, options, security, troubleshooting).
+- README.md: new section "Configuring the Workflow from a File (Script)", TOC, repository structure, pointer in install steps.
+- .gitignore: .qse-github.env. AGENTS.md: keep key lists in sync.
+Validation: bash -n OK; tested with stub gh: apply, dry-run (no writes), partial update (existing QSE_TOKEN), remove, validation failures (GCM true w/o token/url, http URL, missing token, placeholders, bad repo), secret values absent from argv and logs. Real GitHub API calls not exercised. shellcheck not installed. Bug found+fixed during tests: value_of returning 1 under set -e.

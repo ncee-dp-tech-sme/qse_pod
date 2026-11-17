@@ -1,0 +1,83 @@
+---
+name: commit-and-sync
+description: Use when the user wants to commit all changes and push them directly to GitHub — e.g. "commit and push", "commit and sync", "push my changes to GitHub", "save everything to the repo".
+---
+
+# Commit and Sync
+
+Commit all working-tree changes and push them to the current branch's GitHub remote. Use `execute_command` for every git step. Never force-push, never use `--no-verify`, and never rewrite history.
+
+## 1. Inspect the repository
+
+Run, in one command:
+
+```
+git rev-parse --is-inside-work-tree && git branch --show-current && git remote -v && git status --short
+```
+
+- If not a git repository, there is no remote, or the remote is not GitHub: stop and tell the user.
+- If `git branch --show-current` is empty (detached HEAD): stop and ask the user which branch to use.
+- If `git status --short` is empty: report "nothing to commit" and stop. If the branch is only ahead of its upstream, offer to push alone.
+- If a rebase, merge or cherry-pick is in progress (`git status` says so): stop and report it.
+
+## 2. Check for secrets and unwanted files
+
+From the `git status --short` output, look for files that should not be committed: `.env`, `*.pem`, `*.key`, `id_rsa*`, `*.p12`, `credentials*`, `.always_allow`, `node_modules/`, `.venv/`, large binaries.
+
+- Also scan changed files for likely secrets, listing `file:line` only (lines already marked `HashiCorpIgnore` or `pragma: allowlist secret` are skipped):
+  `{ git diff HEAD --name-only -z; git ls-files --others --exclude-standard -z; } | xargs -0 grep -InE '(ghp_|github_pat_|AKIA|-----BEGIN [A-Z ]*PRIVATE KEY-----|(api[_-]?key|token|password|secret)[[:space:]]*[:=][[:space:]]*["'"'"'][^"'"'"' ]{8,})' 2>/dev/null | grep -v -E '(HashiCorpIgnore|pragma:[[:space:]]*allowlist[[:space:]]+secret)' | cut -d: -f1,2`
+- Report only `file:line` and the variable name, never the secret value.
+- If a whole file is unsuitable (`.env`, keys, etc.), ask the user whether to exclude it (add to `.gitignore` or leave unstaged).
+
+### Example secrets: mark with inline allowlisting or `HashiCorpIgnore`
+
+For each detected `file:line`, read that line and use `ask_followup_question` to ask whether it is an **example/placeholder secret** (not a real credential). Options: "Example secret — mark it", "Real secret — do not commit", "Leave this file out of the commit".
+
+- **Example secret:** append an inline allowlist comment (e.g. `pragma: allowlist secret` or `HashiCorpIgnore`) to that line using the file's comment syntax with a space between the original line content and the comment, keeping the detected variable name and its existing value unchanged. Use `search_and_replace` or `apply_diff`; do not rewrite the whole file.
+  - Python, shell, YAML, `.env`, properties, Dockerfile (`#`):
+    `password = "notasecurepassword" # pragma: allowlist secret` (or `# HashiCorpIgnore`)
+  - Java, JavaScript/TypeScript, Go, C/C++/C#, Dart, Rust, PHP (`//`):
+    `String password = "notasecurepassword"; // pragma: allowlist secret` (or `// HashiCorpIgnore`)
+  - CSS, C-style block comments (`/* ... */`):
+    `secret /* pragma: allowlist secret */`
+  - Visual Basic, VBScript (`'`):
+    `secret ' pragma: allowlist secret`
+  - SQL, Lua, Haskell, Ada (`--`):
+    `secret -- pragma: allowlist secret`
+  - HTML, XML, Markdown (`<!-- ... -->` or `<!-- # ... -->`):
+    `secret <!-- pragma: allowlist secret -->`
+    `secret <!-- # pragma: allowlist secret -->`
+  - Here `password`/`secret` stands for the detected variable (for example `api_key`, `token`, `secret`); keep it as it is in the file. The marker goes after the statement terminator (`;`) where there is one.
+  - Other file types: use that language's comment syntax; if it has none (for example JSON), tell the user and ask how to proceed instead of editing.
+- **Real secret:** do not commit. Leave the file unstaged, tell the user to move the value to an environment variable or secret store, and stop.
+- Multi-line secrets such as private key blocks: ask the user; do not edit them automatically.
+- After marking, re-run the scan to confirm no unmarked detections remain. Do not proceed to step 3 while unresolved detections exist.
+
+## 3. Confirm before changing anything
+
+Show the user a short summary: branch, remote URL, and the list of files to be committed (added/modified/deleted counts). Then use `ask_followup_question` to confirm: "Commit all of these and push to `<remote>/<branch>`?" Options: proceed, or cancel. If the branch is `main` or `master`, say explicitly that this pushes directly to the default branch.
+
+## 4. Commit
+
+1. `git add --all`
+2. Review `git diff --cached --stat` and write a commit message from the actual changes: an imperative subject line of 72 characters or fewer, and an optional body with a few bullets for non-trivial changes. Follow the style of recent commits (`git log --oneline -5`).
+3. `git commit -m "<subject>" -m "<body>"` (use a single `-m` if there is no body). If a pre-commit hook fails, fix the reported problem or report it to the user; do not bypass the hook.
+
+## 5. Sync and push
+
+1. `git pull --rebase --autostash` (skip if the branch has no upstream yet).
+   - On conflicts: run `git rebase --abort`, tell the user which files conflict, and stop.
+2. Push:
+   - Upstream exists: `git push`
+   - No upstream: `git push -u origin "$(git branch --show-current)"`
+3. If the push is rejected or authentication fails, report the error message and stop. Do not retry with `--force`. For authentication problems suggest `gh auth login` or checking the credential helper; never ask for or print a token.
+
+## 6. Verify and report
+
+Run `git status -sb` and `git log -1 --oneline`. Confirm the branch is no longer ahead of its upstream, then report: commit hash and subject, branch, number of files committed, and the remote URL.
+
+
+Relative paths in this skill (files and commands) are relative to: /Users/erwin/.bob/skills/commit-and-sync/
+Tue 17 Nov 2026 01:50:27 CET
+
+Verified that `/Users/erwin/.bob/skills/commit-and-sync/SKILL.md` contains the full updated specification including inline allowlisting syntax and grep pattern updates.

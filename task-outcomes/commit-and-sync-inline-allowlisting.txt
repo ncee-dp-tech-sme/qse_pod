@@ -1,0 +1,18 @@
+add inline allowlisting to the global commit-and-sync skill as in the attached examples 
+The tool supports the following inline allowlisting syntax.
+
+Note: a space is needed between the original line content and the comment
+
+secret # pragma: allowlist secret
+secret // pragma: allowlist secret
+secret /* pragma: allowlist secret */
+secret ' pragma: allowlist secret
+secret -- pragma: allowlist secret
+secret <!-- pragma: allowlist secret -->
+secret <!-- # pragma: allowlist secret -->
+Tue 17 Nov 2026 01:45:14 CET
+
+Updated `/Users/erwin/.bob/skills/commit-and-sync/SKILL.md` to support inline allowlisting:
+- Updated the secret scan filter regex in Step 2 to ignore lines already containing `pragma: allowlist secret` in addition to `HashiCorpIgnore`.
+- Documented the supported inline allowlisting comment patterns (`#`, `//`, `/* ... */`, `'`, `--`, `<!-- ... -->`, and `<!-- # ... -->`) with a leading space before the comment.
+- Added language references and examples for each syntax style.
