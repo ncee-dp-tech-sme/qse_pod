@@ -765,7 +765,7 @@ Transient server errors (HTTP 5xx) and curl errors are retried up to **3 times**
 
 ## GitHub Actions Workflow (Template)
 
-[`examples/github-actions/.github/workflows/qse-scan.yml`](examples/github-actions/.github/workflows/qse-scan.yml) is a ready-to-use GitHub Actions workflow that runs a QSE scan on **every push** of the repository it is installed in, commits the results back to the branch and optionally uploads them to GCM.
+[`examples/github-actions/.github/workflows/qse-scan.yml`](https://github.com/ncee-dp-tech-sme/qse_pod/tree/main/examples/github-actions/.github/workflows/qse-scan.yml) is a ready-to-use GitHub Actions workflow that runs a QSE scan on **every push** of the repository it is installed in, commits the results back to the branch and optionally uploads them to GCM.
 
 > **This workflow is a template and is intentionally NOT active in this repository.** GitHub only runs workflows located in `.github/workflows/` at the repository root, and the template lives under `examples/`. Copy it into the repository you want to scan.
 
