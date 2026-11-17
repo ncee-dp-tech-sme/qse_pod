@@ -334,14 +334,27 @@ umask 077 && mkdir -p ~/.secrets && read -rs t && printf '%s' "$t" > ~/.secrets/
 ### Step 4 — Upload the QLI files and keep the directory structure
 
 1. Unpack the QLI download package from IBM (program M0R8BEN) into a working folder, for example `~/qse-download`. Check that `cli.sh` is present and note where it is located (root or sub-directory).
-2. Decide the layout in the repository:
+2. **Accept the license before uploading.** Open the `LicenseAcceptance.config` file in the CLI package and set:
+
+   ```
+   RSP_LICENSE_ACCEPTED=true
+   ```
+
+   The CLI otherwise prompts for license acceptance on its first run, which cannot be answered in a non-interactive container or GitHub Actions run. By setting the value you confirm that you are entitled to use the program and accept its license terms. The file is read from the uploaded package, so this must be done **before** `git push`.
+
+   ```bash
+   # Locate the file and check its current value
+   find ~/qse-download -name LicenseAcceptance.config -exec grep -H RSP_LICENSE_ACCEPTED {} +
+   ```
+
+3. Decide the layout in the repository:
 
    | Layout in repository | `QSE_CLI_SUBDIR` |
    |---|---|
    | `cli.sh` in the repository root | `.` |
    | `CLI/cli.sh` (same layout as the default repository) | `CLI` |
 
-3. Upload with Git (recommended). Git preserves all sub-directories, hidden files and file modes exactly as they are on disk.
+4. Upload with Git (recommended). Git preserves all sub-directories, hidden files and file modes exactly as they are on disk.
 
    ```bash
    # Option 1: files go into a CLI/ sub-directory (QSE_CLI_SUBDIR=CLI)
@@ -366,7 +379,7 @@ umask 077 && mkdir -p ~/.secrets && read -rs t && printf '%s' "$t" > ~/.secrets/
    - GitHub rejects single files larger than 100 MB and warns above 50 MB. For files above these limits, contact your IBM representative or use [Git LFS](https://git-lfs.com/). Note that `git clone --depth=1` in the Dockerfile fetches LFS pointers only unless `git-lfs` is installed in the builder stage.
    - Do not commit unrelated files such as downloaded license keys, `.env` files or tokens.
 
-4. Browser upload (only for small packages): open the repository → **Add file** → **Upload files** and drag the **folders** (not just their contents) into the page. This keeps the directory structure, but is limited to 100 files per upload and 25 MB per file and does not set the executable bit. The Dockerfile runs `chmod +x /opt/qse/*.sh`, so this is acceptable. For large packages with many sub-directories, use Git.
+5. Browser upload (only for small packages): open the repository → **Add file** → **Upload files** and drag the **folders** (not just their contents) into the page. This keeps the directory structure, but is limited to 100 files per upload and 25 MB per file and does not set the executable bit. The Dockerfile runs `chmod +x /opt/qse/*.sh`, so this is acceptable. For large packages with many sub-directories, use Git.
 
 ### Step 5 — Verify the upload
 
@@ -837,6 +850,7 @@ The upload uses the same endpoints, headers and retry rules as the pod (see [GCM
 | `Secret QSE_TOKEN is not set` | Secret missing, or defined only in another repository/environment | Add the secret to this repository |
 | `QSE CLI clone failed` | Token expired, no access to the CLI repo, SSO not authorised, wrong `QSE_REPO_URL`/`QSE_CLI_REF` | Check token scope and expiry |
 | `cli.sh not found` | Wrong `QSE_CLI_SUBDIR` | Set it to the directory that contains `cli.sh` |
+| `License acceptance failed` / `License file not found` | `RSP_LICENSE_ACCEPTED` missing in, or `LicenseAcceptance.config` missing from, the uploaded CLI package | Set `RSP_LICENSE_ACCEPTED=true` in `LicenseAcceptance.config` and push it (see [Step 4](#step-4--upload-the-qli-files-and-keep-the-directory-structure)) |
 | `Push failed` | Branch protection or read-only workflow permissions | Allow `github-actions[bot]` to push, or set permissions to *Read and write* |
 | Workflow runs in a loop | Results directory was changed from `qs_explorer_result` | Keep the default name (also used in `paths-ignore`) |
 | `GCM client error HTTP 401/403` | Wrong or expired `GCM_BEARER_TOKEN` | Rotate the secret |

@@ -65,6 +65,8 @@
 #
 # Changes:
 #   2026-11-17 01:13:40 - Initial creation (template, not active in qse_pod)
+#   2026-11-17 02:33:19 - Set LicenseAcceptance to true in LicenseAcceptance.config before the scan
+#   2026-11-17 02:40:00 - Target the exact key RSP_LICENSE_ACCEPTED (safety net if not set before upload)
 # =============================================================================
 
 name: QSE Scan
@@ -266,6 +268,28 @@ jobs:
             fi
             echo "::endgroup::"
           fi
+
+      # ---- Mark the QSE license as accepted (LicenseAcceptance.config) -------
+      # Preferably RSP_LICENSE_ACCEPTED=true is already set in the CLI package
+      # before it is uploaded; this step is a safety net. By running this
+      # workflow you confirm your organisation is entitled to use the IBM QSE
+      # CLI and accepts its license terms.
+      - name: Accept QSE license
+        run: |
+          cfg="$(find "${QSE_HOME}" -type f -name 'LicenseAcceptance.config' -print -quit)"
+          if [[ -z "${cfg}" ]]; then
+            echo "::error title=License file not found::LicenseAcceptance.config does not exist in the QSE CLI package (${QSE_CLI_SUBDIR})."
+            exit 1
+          fi
+
+          sed -E -i.bak 's/^([[:space:]]*RSP_LICENSE_ACCEPTED[[:space:]]*=[[:space:]]*).*/\1true/' "${cfg}"
+          rm -f "${cfg}.bak"
+
+          if ! grep -qE '^[[:space:]]*RSP_LICENSE_ACCEPTED[[:space:]]*=[[:space:]]*true[[:space:]]*$' "${cfg}"; then
+            echo "::error title=License acceptance failed::RSP_LICENSE_ACCEPTED=true is not set in ${cfg##*/}. Check that the key exists in the file."
+            exit 1
+          fi
+          echo "QSE license acceptance set in ${cfg##*/}."
 
       # ---- Run the scan; output goes to <repo-root>/qs_explorer_result -------
       - name: Run QSE scan

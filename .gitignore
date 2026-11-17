@@ -28,3 +28,4 @@ Thumbs.db
 
 # Stray subdirectory created during session scaffolding
 qse_pod/
+examples/github-actions/qse-github.env

@@ -25,6 +25,7 @@
 #
 # Changes:
 #   2026-11-17 01:27:10 - Initial creation
+#   2026-11-17 02:26:33 - Auth check limited to the target host (a stale login on another host no longer fails it)
 # =============================================================================
 
 set -euo pipefail
@@ -322,7 +323,12 @@ main() {
 
     command -v gh >/dev/null 2>&1 || die "GitHub CLI 'gh' not found. Install it from https://cli.github.com/"
     if [[ "${DRY_RUN}" == false ]]; then
-        gh auth status >/dev/null 2>&1 || die "gh is not authenticated. Run: gh auth login"
+        local auth_host="${GH_HOST:-github.com}"
+        if [[ "${REPO}" =~ ^([A-Za-z0-9.-]+)/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+            auth_host="${BASH_REMATCH[1]}"
+        fi
+        gh auth status --hostname "${auth_host}" >/dev/null 2>&1 \
+            || die "gh is not authenticated for ${auth_host}. Run: gh auth login -h ${auth_host}"
     fi
     resolve_repo
 
