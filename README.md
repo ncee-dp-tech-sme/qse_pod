@@ -2,6 +2,8 @@
 
 A containerised, scheduled workload that runs IBM's **Quantum Safe Explorer (QSE)** cryptographic scanner against **multiple Git repositories** and, optionally (disabled by default), uploads findings to **Guardium Cryptography Manager (GCM)**. Designed to run on both upstream Kubernetes (1.24+) and Red Hat OpenShift 4.x.
 
+[GitHub Actions Workflow (Template)](#github-actions-workflow-template) is a ready-to-use GitHub Actions workflow that runs a QSE scan on every push of the repository it is installed in, commits the results back to the branch and optionally uploads them to GCM.
+
 ---
 [QSE POD Github Repository](https://github.com/ncee-dp-tech-sme/qse_pod)
 ## Table of Contents
