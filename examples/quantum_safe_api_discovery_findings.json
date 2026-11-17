@@ -1,0 +1,655 @@
+{
+  "scanId": "92c145d1-3070-4897-b4f7-b60293b1dc25",
+  "name": "crypto artifacts",
+  "applicationId": "Quantum-DDay",
+  "applicationVersion": "1.0.1",
+  "scanTime": "2026-11-17T02:18:30.725045062Z",
+  "num_artifacts": 13,
+  "repositoryId": " ",
+  "repositoryUrl": " ",
+  "children": [
+    {
+      "file_type": "py",
+      "children": [
+        {
+          "file_id": "f80a0675-ecee-477d-ac92-11979c6a762a",
+          "name": "auth.py",
+          "full_name": "Quantum-DDay/quantum_dday/services/auth.py",
+          "num_artifacts": 3,
+          "crypto_info": [
+            {
+              "id": 0,
+              "title": "hashlib.sha1",
+              "tooltip": [
+                "hashlib.sha1"
+              ],
+              "crypto_properties": {
+                "library": "hashlib",
+                "name": "hashlib.sha1",
+                "primitive": "hash",
+                "variant": "SHA",
+                "oid": "1.3.14.3.2.18",
+                "digestSize": "160",
+                "assetType": "algorithm",
+                "blockSize": "512"
+              },
+              "crypto_vulnerabilities": [
+                {
+                  "vulnerabilityId": "2",
+                  "classification": "cwe327",
+                  "vulnerabilityScore": "high",
+                  "vulnerabilityDocumentationReference": "https://cwe.mitre.org/data/definitions/327.html",
+                  "debugMessage": "Use of broken or risky cryptographic algorithm: SHA",
+                  "type": "Definitive",
+                  "references": [
+                    {
+                      "type": "variant",
+                      "value": "SHA",
+                      "context": {
+                        "location": {
+                          "fileName": "Quantum-DDay/quantum_dday/services/auth.py",
+                          "line": 35,
+                          "startColumn": 17,
+                          "endColumn": 21
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "vulnerabilityId": "12",
+                  "classification": "cwe328",
+                  "vulnerabilityScore": "high",
+                  "vulnerabilityDocumentationReference": "https://cwe.mitre.org/data/definitions/328.html",
+                  "debugMessage": "Use of weak hash algorithm: SHA",
+                  "type": "Definitive",
+                  "references": [
+                    {
+                      "type": "variant",
+                      "value": "SHA",
+                      "context": {
+                        "location": {
+                          "fileName": "Quantum-DDay/quantum_dday/services/auth.py",
+                          "line": 35,
+                          "startColumn": 17,
+                          "endColumn": 21
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "file_path": "Quantum-DDay/quantum_dday/services/auth.py",
+              "call_line": 35,
+              "start": 17,
+              "end": 21,
+              "startScoped": 17,
+              "endScoped": 21
+            },
+            {
+              "id": 1,
+              "title": "hashlib.hash.update",
+              "tooltip": [
+                "hashlib.hash.update"
+              ],
+              "crypto_properties": {
+                "library": "hashlib",
+                "name": "hashlib.hash.update",
+                "primitive": "hash",
+                "assetType": "algorithm"
+              },
+              "crypto_vulnerabilities": [
+                {
+                  "vulnerabilityId": "10",
+                  "classification": "cwe759",
+                  "vulnerabilityScore": "low",
+                  "vulnerabilityDocumentationReference": "https://cwe.mitre.org/data/definitions/759.html",
+                  "debugMessage": "Hashes should include an unpredictable salt.",
+                  "type": "Suggestive",
+                  "references": [
+                    {
+                      "type": "variant",
+                      "context": {
+                        "location": {
+                          "fileName": "Quantum-DDay/quantum_dday/services/auth.py",
+                          "line": 38,
+                          "startColumn": 15,
+                          "endColumn": 21
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "file_path": "Quantum-DDay/quantum_dday/services/auth.py",
+              "call_line": 38,
+              "start": 15,
+              "end": 21,
+              "startScoped": 15,
+              "endScoped": 21
+            },
+            {
+              "id": 2,
+              "title": "hashlib.hash.hexdigest",
+              "tooltip": [
+                "hashlib.hash.hexdigest"
+              ],
+              "crypto_properties": {
+                "library": "hashlib",
+                "name": "hashlib.hash.hexdigest",
+                "primitive": "hash",
+                "assetType": "algorithm",
+                "cryptoFunction": "digest"
+              },
+              "crypto_vulnerabilities": [
+                {
+                  "vulnerabilityId": "10",
+                  "classification": "cwe759",
+                  "vulnerabilityScore": "low",
+                  "vulnerabilityDocumentationReference": "https://cwe.mitre.org/data/definitions/759.html",
+                  "debugMessage": "Hashes should include an unpredictable salt.",
+                  "type": "Suggestive",
+                  "references": [
+                    {
+                      "type": "variant",
+                      "context": {
+                        "location": {
+                          "fileName": "Quantum-DDay/quantum_dday/services/auth.py",
+                          "line": 39,
+                          "startColumn": 14,
+                          "endColumn": 23
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "file_path": "Quantum-DDay/quantum_dday/services/auth.py",
+              "call_line": 39,
+              "start": 14,
+              "end": 23,
+              "startScoped": 14,
+              "endScoped": 23
+            }
+          ]
+        },
+        {
+          "file_id": "dab9fa25-5f38-4ce9-811c-034a9551fef4",
+          "name": "routes.py",
+          "full_name": "Quantum-DDay/quantum_dday/api/routes.py",
+          "num_artifacts": 3,
+          "crypto_info": [
+            {
+              "id": 0,
+              "title": "cryptography.hazmat.primitives.asymmetric.rsa.generate_private_key",
+              "tooltip": [
+                "cryptography.hazmat.primitives.asymmetric.rsa.generate_private_key"
+              ],
+              "crypto_properties": {
+                "library": "cryptography",
+                "name": "cryptography.hazmat.primitives.asymmetric.rsa.generate_private_key",
+                "primitive": "signature",
+                "variant": "RSA",
+                "assetType": "algorithm",
+                "cryptoFunction": "keygen"
+              },
+              "crypto_vulnerabilities": [
+                {
+                  "vulnerabilityId": "4",
+                  "classification": "cwe327",
+                  "vulnerabilityScore": "high",
+                  "vulnerabilityDocumentationReference": "https://cwe.mitre.org/data/definitions/327.html",
+                  "debugMessage": "Use of non-quantum-resistant public-key algorithms (must be ML-KEM, ML-DSA, SLH-DSA): RSA",
+                  "type": "Definitive",
+                  "references": [
+                    {
+                      "type": "variant",
+                      "value": "RSA",
+                      "context": {
+                        "location": {
+                          "fileName": "Quantum-DDay/quantum_dday/api/routes.py",
+                          "line": 25,
+                          "startColumn": 16,
+                          "endColumn": 36
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "vulnerabilityId": "18",
+                  "classification": "cwe326",
+                  "vulnerabilityScore": "high",
+                  "vulnerabilityDocumentationReference": "https://cwe.mitre.org/data/definitions/326.html",
+                  "debugMessage": "Cryptographic keys should be robust. Use a key length of more than 1024 bits.",
+                  "type": "Suggestive",
+                  "references": [
+                    {
+                      "type": "variant",
+                      "value": "RSA",
+                      "context": {
+                        "location": {
+                          "fileName": "Quantum-DDay/quantum_dday/api/routes.py",
+                          "line": 25,
+                          "startColumn": 16,
+                          "endColumn": 36
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "file_path": "Quantum-DDay/quantum_dday/api/routes.py",
+              "call_line": 25,
+              "start": 16,
+              "end": 36,
+              "startScoped": 16,
+              "endScoped": 36
+            },
+            {
+              "id": 1,
+              "title": "Crypto.Cipher.AES.new",
+              "tooltip": [
+                "Crypto.Cipher.AES.new"
+              ],
+              "crypto_properties": {
+                "library": "Crypto",
+                "name": "Crypto.Cipher.AES.new",
+                "variant": "AES",
+                "assetType": "algorithm"
+              },
+              "crypto_vulnerabilities": [
+                {
+                  "vulnerabilityId": "3",
+                  "classification": "cwe327",
+                  "vulnerabilityScore": "high",
+                  "vulnerabilityDocumentationReference": "https://cwe.mitre.org/data/definitions/327.html",
+                  "debugMessage": "Use a secure cipher mode. For AES, the weakest modes are CBC (Cipher Block Chaining) and ECB (Electronic Codebook), as they are either vulnerable to padding oracles or do not provide authentication mechanisms.",
+                  "type": "Suggestive",
+                  "references": [
+                    {
+                      "type": "variant",
+                      "value": "AES",
+                      "context": {
+                        "location": {
+                          "fileName": "Quantum-DDay/quantum_dday/api/routes.py",
+                          "line": 38,
+                          "startColumn": 18,
+                          "endColumn": 21
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "file_path": "Quantum-DDay/quantum_dday/api/routes.py",
+              "call_line": 38,
+              "start": 18,
+              "end": 21,
+              "startScoped": 18,
+              "endScoped": 21
+            },
+            {
+              "id": 2,
+              "title": "Crypto.Cipher._mode_cbc.CbcMode.encrypt",
+              "tooltip": [
+                "Crypto.Cipher._mode_cbc.CbcMode.encrypt"
+              ],
+              "crypto_properties": {
+                "library": "Crypto",
+                "name": "Crypto.Cipher._mode_cbc.CbcMode.encrypt",
+                "primitive": "blockcipher",
+                "assetType": "algorithm",
+                "cryptoFunction": "encrypt",
+                "mode": "cbc"
+              },
+              "crypto_vulnerabilities": [
+                {
+                  "vulnerabilityId": "20",
+                  "classification": "cwe1204",
+                  "vulnerabilityScore": "high",
+                  "vulnerabilityDocumentationReference": "https://cwe.mitre.org/data/definitions/1204.html",
+                  "debugMessage": "Use a dynamically-generated, random initialization vector (IV).",
+                  "type": "Suggestive",
+                  "references": [
+                    {
+                      "type": "primitive",
+                      "value": "blockcipher",
+                      "context": {
+                        "location": {
+                          "fileName": "Quantum-DDay/quantum_dday/api/routes.py",
+                          "line": 40,
+                          "startColumn": 24,
+                          "endColumn": 31
+                        }
+                      }
+                    },
+                    {
+                      "type": "mode",
+                      "value": "cbc",
+                      "context": {
+                        "location": {
+                          "fileName": "Quantum-DDay/quantum_dday/api/routes.py",
+                          "line": 40,
+                          "startColumn": 24,
+                          "endColumn": 31
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "file_path": "Quantum-DDay/quantum_dday/api/routes.py",
+              "call_line": 40,
+              "start": 24,
+              "end": 31,
+              "startScoped": 24,
+              "endScoped": 31
+            }
+          ]
+        },
+        {
+          "file_id": "6e1d95ff-c42e-4384-9056-cc46efa6eb62",
+          "name": "user.py",
+          "full_name": "Quantum-DDay/quantum_dday/services/user.py",
+          "num_artifacts": 3,
+          "crypto_info": [
+            {
+              "id": 0,
+              "title": "Crypto.Cipher.AES.new",
+              "tooltip": [
+                "Crypto.Cipher.AES.new"
+              ],
+              "crypto_properties": {
+                "library": "Crypto",
+                "name": "Crypto.Cipher.AES.new",
+                "variant": "AES",
+                "assetType": "algorithm"
+              },
+              "crypto_vulnerabilities": [
+                {
+                  "vulnerabilityId": "3",
+                  "classification": "cwe327",
+                  "vulnerabilityScore": "high",
+                  "vulnerabilityDocumentationReference": "https://cwe.mitre.org/data/definitions/327.html",
+                  "debugMessage": "Use a secure cipher mode. For AES, the weakest modes are CBC (Cipher Block Chaining) and ECB (Electronic Codebook), as they are either vulnerable to padding oracles or do not provide authentication mechanisms.",
+                  "type": "Suggestive",
+                  "references": [
+                    {
+                      "type": "variant",
+                      "value": "AES",
+                      "context": {
+                        "location": {
+                          "fileName": "Quantum-DDay/quantum_dday/services/user.py",
+                          "line": 37,
+                          "startColumn": 18,
+                          "endColumn": 21
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "file_path": "Quantum-DDay/quantum_dday/services/user.py",
+              "call_line": 37,
+              "start": 18,
+              "end": 21,
+              "startScoped": 18,
+              "endScoped": 21
+            },
+            {
+              "id": 1,
+              "title": "Crypto.Cipher._mode_ecb.EcbMode.encrypt",
+              "tooltip": [
+                "Crypto.Cipher._mode_ecb.EcbMode.encrypt"
+              ],
+              "crypto_properties": {
+                "library": "Crypto",
+                "name": "Crypto.Cipher._mode_ecb.EcbMode.encrypt",
+                "primitive": "blockcipher",
+                "assetType": "algorithm",
+                "cryptoFunction": "encrypt",
+                "mode": "ecb"
+              },
+              "crypto_vulnerabilities": [],
+              "file_path": "Quantum-DDay/quantum_dday/services/user.py",
+              "call_line": 39,
+              "start": 36,
+              "end": 43,
+              "startScoped": 36,
+              "endScoped": 43
+            },
+            {
+              "id": 2,
+              "title": "hashlib.pbkdf2_hmac",
+              "tooltip": [
+                "hashlib.pbkdf2_hmac"
+              ],
+              "crypto_properties": {
+                "library": "hashlib",
+                "name": "hashlib.pbkdf2_hmac",
+                "primitive": "kdf",
+                "variant": "PBKDF2",
+                "assetType": "algorithm",
+                "cryptoFunction": "keyderive"
+              },
+              "crypto_vulnerabilities": [],
+              "file_path": "Quantum-DDay/quantum_dday/services/user.py",
+              "call_line": 47,
+              "start": 20,
+              "end": 31,
+              "startScoped": 20,
+              "endScoped": 31
+            }
+          ]
+        },
+        {
+          "file_id": "4d0afe1c-f800-464a-a039-ae9873885136",
+          "name": "keys.py",
+          "full_name": "Quantum-DDay/quantum_dday/crypto/keys.py",
+          "num_artifacts": 2,
+          "crypto_info": [
+            {
+              "id": 0,
+              "title": "cryptography.hazmat.primitives.asymmetric.ec.generate_private_key",
+              "tooltip": [
+                "cryptography.hazmat.primitives.asymmetric.ec.generate_private_key"
+              ],
+              "crypto_properties": {
+                "library": "cryptography",
+                "name": "cryptography.hazmat.primitives.asymmetric.ec.generate_private_key",
+                "primitive": "keyagree",
+                "variant": "EC",
+                "assetType": "algorithm",
+                "cryptoFunction": "keygen"
+              },
+              "crypto_vulnerabilities": [
+                {
+                  "vulnerabilityId": "4",
+                  "classification": "cwe327",
+                  "vulnerabilityScore": "high",
+                  "vulnerabilityDocumentationReference": "https://cwe.mitre.org/data/definitions/327.html",
+                  "debugMessage": "Use of non-quantum-resistant public-key algorithms (must be ML-KEM, ML-DSA, SLH-DSA): EC",
+                  "type": "Definitive",
+                  "references": [
+                    {
+                      "type": "variant",
+                      "value": "EC",
+                      "context": {
+                        "location": {
+                          "fileName": "Quantum-DDay/quantum_dday/crypto/keys.py",
+                          "line": 16,
+                          "startColumn": 17,
+                          "endColumn": 37
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "file_path": "Quantum-DDay/quantum_dday/crypto/keys.py",
+              "call_line": 16,
+              "start": 17,
+              "end": 37,
+              "startScoped": 17,
+              "endScoped": 37
+            },
+            {
+              "id": 1,
+              "title": "cryptography.hazmat.primitives.asymmetric.ec.ECDH",
+              "tooltip": [
+                "cryptography.hazmat.primitives.asymmetric.ec.ECDH"
+              ],
+              "crypto_properties": {
+                "library": "cryptography",
+                "name": "cryptography.hazmat.primitives.asymmetric.ec.ECDH",
+                "primitive": "keyagree",
+                "variant": "ECDH",
+                "oid": "1.3.132.1.12",
+                "assetType": "algorithm"
+              },
+              "crypto_vulnerabilities": [
+                {
+                  "vulnerabilityId": "4",
+                  "classification": "cwe327",
+                  "vulnerabilityScore": "high",
+                  "vulnerabilityDocumentationReference": "https://cwe.mitre.org/data/definitions/327.html",
+                  "debugMessage": "Use of non-quantum-resistant public-key algorithms (must be ML-KEM, ML-DSA, SLH-DSA): ECDH",
+                  "type": "Definitive",
+                  "references": [
+                    {
+                      "type": "variant",
+                      "value": "ECDH",
+                      "context": {
+                        "location": {
+                          "fileName": "Quantum-DDay/quantum_dday/crypto/keys.py",
+                          "line": 17,
+                          "startColumn": 31,
+                          "endColumn": 35
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "file_path": "Quantum-DDay/quantum_dday/crypto/keys.py",
+              "call_line": 17,
+              "start": 31,
+              "end": 35,
+              "startScoped": 31,
+              "endScoped": 35
+            }
+          ]
+        },
+        {
+          "file_id": "2e7e0328-4f08-4237-a3f5-b9990c7a3e5e",
+          "name": "settings.py",
+          "full_name": "Quantum-DDay/quantum_dday/config/settings.py",
+          "num_artifacts": 2,
+          "crypto_info": [
+            {
+              "id": 0,
+              "title": "Crypto.Cipher.AES.new",
+              "tooltip": [
+                "Crypto.Cipher.AES.new"
+              ],
+              "crypto_properties": {
+                "library": "Crypto",
+                "name": "Crypto.Cipher.AES.new",
+                "variant": "AES",
+                "assetType": "algorithm"
+              },
+              "crypto_vulnerabilities": [
+                {
+                  "vulnerabilityId": "3",
+                  "classification": "cwe327",
+                  "vulnerabilityScore": "high",
+                  "vulnerabilityDocumentationReference": "https://cwe.mitre.org/data/definitions/327.html",
+                  "debugMessage": "Use a secure cipher mode. For AES, the weakest modes are CBC (Cipher Block Chaining) and ECB (Electronic Codebook), as they are either vulnerable to padding oracles or do not provide authentication mechanisms.",
+                  "type": "Suggestive",
+                  "references": [
+                    {
+                      "type": "variant",
+                      "value": "AES",
+                      "context": {
+                        "location": {
+                          "fileName": "Quantum-DDay/quantum_dday/config/settings.py",
+                          "line": 31,
+                          "startColumn": 18,
+                          "endColumn": 21
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "file_path": "Quantum-DDay/quantum_dday/config/settings.py",
+              "call_line": 31,
+              "start": 18,
+              "end": 21,
+              "startScoped": 18,
+              "endScoped": 21
+            },
+            {
+              "id": 1,
+              "title": "Crypto.Cipher._mode_cbc.CbcMode.encrypt",
+              "tooltip": [
+                "Crypto.Cipher._mode_cbc.CbcMode.encrypt"
+              ],
+              "crypto_properties": {
+                "library": "Crypto",
+                "name": "Crypto.Cipher._mode_cbc.CbcMode.encrypt",
+                "primitive": "blockcipher",
+                "assetType": "algorithm",
+                "cryptoFunction": "encrypt",
+                "mode": "cbc"
+              },
+              "crypto_vulnerabilities": [
+                {
+                  "vulnerabilityId": "20",
+                  "classification": "cwe1204",
+                  "vulnerabilityScore": "high",
+                  "vulnerabilityDocumentationReference": "https://cwe.mitre.org/data/definitions/1204.html",
+                  "debugMessage": "Use a dynamically-generated, random initialization vector (IV).",
+                  "type": "Suggestive",
+                  "references": [
+                    {
+                      "type": "primitive",
+                      "value": "blockcipher",
+                      "context": {
+                        "location": {
+                          "fileName": "Quantum-DDay/quantum_dday/config/settings.py",
+                          "line": 33,
+                          "startColumn": 19,
+                          "endColumn": 26
+                        }
+                      }
+                    },
+                    {
+                      "type": "mode",
+                      "value": "cbc",
+                      "context": {
+                        "location": {
+                          "fileName": "Quantum-DDay/quantum_dday/config/settings.py",
+                          "line": 33,
+                          "startColumn": 19,
+                          "endColumn": 26
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "file_path": "Quantum-DDay/quantum_dday/config/settings.py",
+              "call_line": 33,
+              "start": 19,
+              "end": 26,
+              "startScoped": 19,
+              "endScoped": 26
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+PROMPT: Before uploading to GCM, in quantum_safe_api_discovery_cbom.json {"name":"gitUrl","value":""} must be set and in quantum_safe_api_discovery_findings.json "repositoryId": " ", "repositoryUrl": " " - change the github action so it sets those values. For python only upload quantum_safe_api_discovery_findings.json; for Java quantum_safe_api_discovery_cbom.json
+Tue 17 Nov 2026 03:13:34 CET
+
+RESULT: examples/github-actions/.github/workflows/qse-scan.yml
+- New step "Set repository metadata in result files" (jq, after scan, before commit): gitUrl=<server>/<owner>/<repo>; repositoryUrl=same; repositoryId=<owner>/<repo>.
+- GCM upload: .py -> findings.json, .java -> cbom.json, both via /discovery endpoint; analytics no longer uploaded.
+- Header/changelog and README.md (GitHub Actions section) updated.
+Assumptions: repositoryId = owner/repo; CBOM goes to /discovery endpoint.

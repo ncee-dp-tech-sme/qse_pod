@@ -783,6 +783,7 @@ push ──► validate config ──► fetch cli.sh from private repo (QSE_TOK
 | Loop prevention | `paths-ignore`, `[skip ci]`, and `GITHUB_TOKEN` pushes never trigger new runs. A `concurrency` group serialises runs per branch; a rejected push is retried up to 3 times on top of the latest remote commit |
 | Private CLI access | `QSE_TOKEN` is passed to `git` through `GIT_CONFIG_*` environment variables (HTTP auth header scoped to the CLI repo host). It is never written into a URL, command line, file or `.git/config`, and the derived header is masked in the log |
 | GCM upload | **Off by default.** Enabled with `GCM_UPLOAD_ENABLED=true`. Runs *after* the results are committed, so a GCM outage never loses results (the job still fails so you notice) |
+| Repository metadata | Right after the scan (needs `jq`, preinstalled on `ubuntu-latest`) the workflow sets the `gitUrl` property in `quantum_safe_api_discovery_cbom.json` to `<GITHUB_SERVER_URL>/<owner>/<repo>`, and `repositoryUrl` (same URL) and `repositoryId` (`<owner>/<repo>`) in `quantum_safe_api_discovery_findings.json`. A warning is logged if the keys are not found |
 | Error handling | Fail-fast configuration validation with `::error::` annotations, best-effort pre-compilation (`::warning::`), non-zero CLI exit and empty-result detection fail the job, GCM 5xx retried (5/10/20 s), 4xx not retried, job summary written, CLI removed from the runner at the end |
 | Permissions | `contents: write` only (needed for the results commit) |
 
@@ -834,7 +835,7 @@ GCM upload ON:             set variable GCM_UPLOAD_ENABLED=true
                            + secret   GCM_BEARER_TOKEN=<token>
 ```
 
-The upload uses the same endpoints, headers and retry rules as the pod (see [GCM API Reference](#gcm-api-reference)); the repository URL sent to GCM is `<GITHUB_SERVER_URL>/<owner>/<repo>`.
+The upload uses the same endpoint (`/discovery`), headers and retry rules as the pod (see [GCM API Reference](#gcm-api-reference)); the repository URL sent to GCM is `<GITHUB_SERVER_URL>/<owner>/<repo>`. Unlike the pod, the workflow uploads **only one file per language**: for Python scans `quantum_safe_api_discovery_findings.json`, for Java scans `quantum_safe_api_discovery_cbom.json`. Analytics files are not uploaded.
 
 ### Notes and limitations
 
