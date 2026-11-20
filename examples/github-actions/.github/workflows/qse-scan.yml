@@ -71,6 +71,7 @@
 #   2026-11-17 02:40:00 - Target the exact key RSP_LICENSE_ACCEPTED (safety net if not set before upload)
 #   2026-11-17 02:12:23 - Set gitUrl in CBOM and repositoryId/repositoryUrl in findings; GCM upload: Python=findings, Java=CBOM only
 #   2026-11-17 02:21:38 - Locate result files recursively (QSE nests them in qs_explorer_result/qs_explorer_result/)
+#   2026-11-20 18:50:58 - Flatten QSE's nested qs_explorer_result/ sub-directory right after the scan
 # =============================================================================
 
 name: QSE Scan
@@ -348,6 +349,13 @@ jobs:
             echo "::error title=No results::QSE finished but produced no files in ${OUT_DIR}."
             exit 1
           fi
+          # QSE nests its results in <out>/qs_explorer_result/ - move them up one level.
+          nested="${out}/${OUT_DIR}"
+          if [[ -d "${nested}" ]]; then
+            cp -a "${nested}/." "${out}/"
+            rm -rf "${nested}"
+          fi
+
           echo "QSE scan completed. Results: ${OUT_DIR}/"
           ls -1 "${out}"
 
@@ -372,8 +380,7 @@ jobs:
             fi
           }
 
-          # QSE may write into a sub-directory of the output dir
-          # (e.g. qs_explorer_result/qs_explorer_result/), so search recursively.
+          # Result files are flattened into ${OUT_DIR}/ by the scan step.
           cbom="$(find "${OUT_DIR}" -type f -name 'quantum_safe_api_discovery_cbom.json' -print -quit)"
           if [[ -n "${cbom}" ]]; then
             patch_json "${cbom}" 'walk(if type == "object" and .name? == "gitUrl" then .value = $url else . end)' || exit 1
@@ -488,7 +495,7 @@ jobs:
 
           # Python -> quantum_safe_api_discovery_findings.json only
           # Java   -> quantum_safe_api_discovery_cbom.json only
-          # (files are searched recursively: QSE may nest them in a sub-directory)
+          # (files are located directly under ${OUT_DIR}/ after the scan step flattens them)
           to_upload=()
           if [[ ",${QSE_LANG_FLAG}," == *",.py,"* ]]; then
             to_upload+=("$(find "${OUT_DIR}" -type f -name 'quantum_safe_api_discovery_findings.json' -print -quit)")
